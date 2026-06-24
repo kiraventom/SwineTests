@@ -1,5 +1,4 @@
-﻿using System.Collections.Concurrent;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using SwineBot;
@@ -15,118 +14,90 @@ public class TryProgress
     public int Hour { get; set; }
 }
 
-public class TestService(ILogger<TestService> Logger, Settings Settings, IServiceScopeFactory spf) : BackgroundService
+public class TestService(ILogger<TestService> Logger, Settings Settings, IBotMessageSender sender, IDateTimeNowProvider DtnProvider, IServiceScopeFactory spf) : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using (var scope = spf.CreateScope())
+        var mockSender = (MockBotMessageSender)sender;
+        Console.WriteLine();
+
+        var tryProgress = new TryProgress();
+
+        foreach (var strategy in Enum.GetValues<TestUserStrategy>())
         {
-            var messageSender = scope.ServiceProvider.GetRequiredService<IBotMessageSender>();
-            var achievController = scope.ServiceProvider.GetRequiredService<IAchievementController>();
-            messageSender.BeforeMessageSend += achievController.OnBeforeMessageSend;
+            tryProgress.Users.Add(new TestUser(strategy));
         }
 
-        var tries = new TryProgress[Settings.TriesCount];
-        for (int i = 0; i < tries.Length; ++i)
-            tries[i] = new TryProgress();
-
-        Console.WriteLine();
-        var top = Console.CursorTop;
-
-        string log = string.Empty;
-
-        for (int t = 0; t < Settings.TriesCount; ++t)
+        var start = DateTime.UtcNow;
+        for (int d = 0; d < Settings.DaysCount; ++d)
         {
-            var tryProgress = tries[t];
+            tryProgress.Day = d;
 
-            foreach (var strategy in Enum.GetValues<TestUserStrategy>())
+            for (int h = 0; h < 24; ++h)
             {
-                for (int u = 0; u < Settings.SwinesCount; ++u)
-                {
-                    tryProgress.Users.Add(new TestUser(strategy));
-                }
-            }
+                stoppingToken.ThrowIfCancellationRequested();
+                tryProgress.Hour = h;
 
-            var start = DateTime.UtcNow;
-            for (int d = 0; d < Settings.DaysCount; ++d)
-            {
-                tryProgress.Day = d;
-                for (int h = 0; h < 24; ++h)
+                Console.WriteLine($"Day {tryProgress.Day + 1}/{Settings.DaysCount}, hour {tryProgress.Hour + 1}/{24}");
+
+                var dt = start.AddDays(d).AddHours(h);
+                ((MockDateTimeNowProvider)DtnProvider).UtcNow = dt;
+
+                foreach (var user in tryProgress.Users)
                 {
-                    tryProgress.Hour = h;
                     stoppingToken.ThrowIfCancellationRequested();
 
-                    Console.SetCursorPosition(0, top + t);
-                    Console.Write(new string(' ', log.Length));
-                    log = $"Try {t + 1}/{Settings.TriesCount}, day {tryProgress.Day + 1}/{Settings.DaysCount}, hour {tryProgress.Hour + 1}/{24}";
-                    Console.SetCursorPosition(0, top + t);
-                    Console.Write(log);
+                    using var scope = spf.CreateScope();
+                    var context = scope.ServiceProvider.GetRequiredService<UserContext>();
+                    var achievController = scope.ServiceProvider.GetRequiredService<AchievementController>();
 
-                    var dt = start.AddDays(d).AddHours(h);
-                    foreach (var user in tryProgress.Users)
+                    Telegram.Bot.Types.Update update;
+
+                    if (user.Strategy != TestUserStrategy.RegularNoOverfeed
+                        && d != 0 && d < 730 && d % 60 == 0 && h == 0) 
+                        update = user.GenerateSlaughter();
+                    else
+                        update = user.TryGenerateFeed(context, achievController, dt);
+
+                    if (update is null)
+                        continue;
+
+                    var updateHandler = scope.ServiceProvider.GetRequiredService<IUpdateHandler>();
+
+                    var updateHandleResult = await updateHandler.Handle(update, CancellationToken.None);
+                    if (updateHandleResult == UpdateHandleResult.OK)
                     {
-                        var update = user.TryGenerateUpdate(dt);
-
-                        if (update != null)
-                        {
-                            using var scope = spf.CreateScope();
-                            var updateHandler = scope.ServiceProvider.GetRequiredService<IUpdateHandler>();
-                            var context = scope.ServiceProvider.GetRequiredService<UserContext>();
-
-                            updateHandler.Handle(update, CancellationToken.None).Wait();
-
-                            int amount;
-                            var feed = context.Feeds.OrderByDescending(f => f.DateTime).FirstOrDefault();
-                            if (feed is null)
-                            {
-                                var weightLoss = context.WeightLosses.OrderByDescending(wl => wl.DateTime).First();
-                                amount = weightLoss.Amount;
-                            }
-                            else
-                            {
-                                amount = feed.Amount;
-                            }
-
-                            user.FeedLog.Add(new FeedRecord(dt, amount));
-                        }
+                        Console.WriteLine(mockSender.MessagesHistory.Last().Text);
+                        continue;
                     }
+
+                    Console.Error.WriteLine($"Failed to handle update: {updateHandleResult.ToString()}");
+                    Console.Error.WriteLine("Press any key to continue...");
                 }
             }
         }
 
-        Console.WriteLine();
-        Console.WriteLine($"Runs: {Settings.TriesCount}");
-        Console.WriteLine($"Days: {Settings.DaysCount}");
-        Console.WriteLine($"Swines: {Settings.SwinesCount * Enum.GetValues<TestUserStrategy>().Count()}");
+        // Results
+        var firstUser = tryProgress.Users.First();
+        var topUpdate = firstUser.GenerateTop();
+        var historyUpdate = firstUser.GenerateHistory();
 
-        var results = Enum.GetValues<TestUserStrategy>()
-            .Select(s => new
-            {
-                Strategy = s,
-                Averages = tries
-                    .Select(t => t.Users.Where(u => u.Strategy == s).ToList())
-                    .Where(users => users.Any())
-                    .Select(users => users.Average(u => u.Weight))
-            });
-
-        string format = "{0, -25}" + string.Join(string.Empty, tries.Select((_, i) => $"{{Run #{i + 1}, -10}}")) + $"{{{tries.Length + 1},-10}}";
-
-        var headerContent = new List<string>() { "Strategy" };
-        headerContent.AddRange(Enumerable.Range(1, tries.Length).Select(i => i.ToString()));
-        headerContent.Add("Total");
-        var header = string.Format(format, headerContent.ToArray());
-        Console.WriteLine(header);
-
-        foreach (var result in results)
         {
-            var resultContent = new List<string>();
-            resultContent.Add(result.Strategy.ToString());
-            resultContent.AddRange(result.Averages.Select(a => a.ToString()));
-            resultContent.Add(result.Averages.Average().ToString());
+            using var scope = spf.CreateScope();
+            var updateHandler = scope.ServiceProvider.GetRequiredService<IUpdateHandler>();
+            await updateHandler.Handle(topUpdate, CancellationToken.None);
+            Console.WriteLine(mockSender.MessagesHistory.Last().Text);
 
-            var line = string.Format(format, resultContent.ToArray());
-            Console.WriteLine(line);
+            await updateHandler.Handle(historyUpdate, CancellationToken.None);
+            var bytes = mockSender.MessagesHistory.Last().PhotoBytes;
+
+            var tmpPath = Path.Combine(Path.GetTempPath(), Path.ChangeExtension(Path.GetRandomFileName(), ".png"));
+            using (var s = File.OpenWrite(tmpPath))
+                s.Write(bytes, 0, bytes.Length);
+
+            Console.WriteLine("Graph: " + tmpPath);
         }
+
     }
 }
 

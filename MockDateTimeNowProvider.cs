@@ -4,6 +4,6 @@ namespace SwineTests;
 
 public class MockDateTimeNowProvider : IDateTimeNowProvider
 {
-    public DateTime UtcNow => DateTime.UtcNow;
+    public DateTime UtcNow { get; set; }
 }
 

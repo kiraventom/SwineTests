@@ -1,22 +1,18 @@
 ﻿using SwineBot;
 using SwineBot.BotMessages;
-using SwineBot.Model;
 using Telegram.Bot.Types;
 
 namespace SwineTests;
 
 public class MockBotMessageSender : IBotMessageSender
 {
-    public event BeforeMessageSendDelegate BeforeMessageSend;
+    private readonly List<IBotMessage> _messages = [];
+    public IReadOnlyList<IBotMessage> MessagesHistory => _messages;
 
-    public async Task<Message> Send(UserContext context, ChatId chatId, int userId, BotMessage botMessage)
+    public Task<Message> Send(SwineBot.Update update, IBotMessage botMessage)
     {
-        await botMessage.Init(context, chatId, userId);
-
-        if (BeforeMessageSend is not null)
-            BeforeMessageSend?.Invoke(context, chatId, userId, botMessage);
-
-        return null;
+        _messages.Add(botMessage);
+        return Task.FromResult<Message>(null);
     }
 }
 

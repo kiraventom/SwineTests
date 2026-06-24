@@ -1,25 +1,19 @@
-﻿using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Serilog;
 using Serilog.Events;
 using SwineBot;
-using SwineBot.Achievements;
-using SwineBot.Achievements.Checkers;
-using SwineBot.BotMessages;
 using SwineBot.Model;
-using Telegram.Bot;
 using static System.Environment;
-using static SwineTests.TestService;
 
 namespace SwineTests;
 
-public record Settings(int SwinesCount, int TriesCount, int DaysCount);
+public record Settings(int DaysCount);
 
 internal class Program
 {
-    private const string USAGE = "Usage: SwineTests --swines <swines_count> --tries <tries_count> --days <days_count>";
+    private const string USAGE = "Usage: SwineTests --days <days_count>";
 
     private const string PROJECT_NAME = nameof(SwineTests);
 
@@ -34,27 +28,24 @@ internal class Program
 
         Log.Information("Building host...");
 
-        var connection = new SqliteConnection("DataSource=:memory:");
+        var dbPath = "~/.config/SwineTests/users.db";
+        if (File.Exists(dbPath))
+            File.Delete(dbPath);
+
+        var config = new Config("TOKEN", "@USERNAME", $"DataSource={dbPath};", "../SwineBot/Achievements/achiev_data.json");
 
         try
         {
-            connection.Open();
-
             var builder = Host.CreateApplicationBuilder();
 
             builder.Services
                 .AddSerilog(ConfigureLogger)
-                .AddSingleton<Settings>(settings)
-                .AddSingleton<IDateTimeNowProvider, MockDateTimeNowProvider>()
-                .AddSingleton<IFeedGeneratorFactory, FeedGeneratorFactory>()
-                .AddSingleton<IThrowupCalculatorFactory, ThrowupCalculatorFactory>()
-                .AddSingleton<IMessageFactory, MessageFactory>()
-                .AddSingleton<IBotMessageSender, MockBotMessageSender>()
-                .AddSingleton<IAchievementController, AchievementController>()
-                .AddDbContext<UserContext>(o => o.UseSqlite(connection))
-                .AddScoped<IUpdateHandler, MockUpdateHandler>()
-                .AddSingleton<IAchievementCheckerFactory, AchievementCheckerFactory>()
-                .AddTransient<AchievementCheckerBuilder>()
+                .AddSingleton<Settings>(settings);
+
+            SwineBot.Program.RegisterServices(builder.Services)
+                .RemoveAll<Config>().AddSingleton<Config>(config)
+                .RemoveAll<IDateTimeNowProvider>().AddSingleton<IDateTimeNowProvider, MockDateTimeNowProvider>()
+                .RemoveAll<IBotMessageSender>().AddSingleton<IBotMessageSender, MockBotMessageSender>()
                 .AddHostedService<TestService>();
 
             var host = builder.Build();
@@ -76,7 +67,6 @@ internal class Program
         finally
         {
             await Log.CloseAndFlushAsync();
-            connection.Dispose();
         }
     }
 
@@ -96,20 +86,6 @@ internal class Program
     {
         var settings = args.Chunk(2).ToDictionary(p => p[0], p => p[1]);
 
-        if (!settings.TryGetValue("--swines", out var swinesStr) || !int.TryParse(swinesStr, out var swines))
-        {
-            Console.Error.WriteLine("--swines is not set or is set incorrectly");
-            Console.WriteLine(USAGE);
-            return null;
-        }
-
-        if (!settings.TryGetValue("--tries", out var triesStr) || !int.TryParse(triesStr, out var tries))
-        {
-            Console.Error.WriteLine("--tries is not set or is set incorrectly");
-            Console.WriteLine(USAGE);
-            return null;
-        }
-
         if (!settings.TryGetValue("--days", out var daysStr) || !int.TryParse(daysStr, out var days))
         {
             Console.Error.WriteLine("--days is not set or is set incorrectly");
@@ -117,6 +93,6 @@ internal class Program
             return null;
         }
 
-        return new Settings(swines, tries, days);
+        return new Settings(days);
     }
 }
