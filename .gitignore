@@ -2,3 +2,7 @@ bin
 obj
 ~*
 *.swp
+*.db
+*.db-shm
+*.db-wal
+run*.log

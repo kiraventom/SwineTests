@@ -1,15 +1,13 @@
-﻿using Microsoft.Extensions.Logging;
-using SwineBot;
-using SwineBot.BotMessages;
-using SwineBot.Model;
+using SwineBot.Updates;
 
 namespace SwineTests;
 
-public class MockUpdateHandler(ILogger<MockUpdateHandler> logger, UserContext context, IBotMessageSender Sender, IMessageFactory factory) : IUpdateHandler
+/// <summary>
+/// Not a real handler: kept as a compiling stub for cases when a test needs
+/// to register <see cref="IUpdateHandler"/> without running the bot pipeline.
+/// </summary>
+public class MockUpdateHandler : IUpdateHandler
 {
     public Task<UpdateHandleResult> Handle(Telegram.Bot.Types.Update update, CancellationToken token)
-    {
-        throw new NotImplementedException();
-    }
+        => throw new NotImplementedException();
 }
-
