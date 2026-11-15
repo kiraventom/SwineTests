@@ -12,6 +12,13 @@
   </ItemGroup>
 
   <ItemGroup>
+      <!-- /history renders a graph and the bot looks for the font next to its own binary -->
+      <None Include="../SwineBot/Fonts/Roboto-Regular.ttf" Link="Fonts/Roboto-Regular.ttf">
+          <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+  </ItemGroup>
+
+  <ItemGroup>
       <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
       <PackageReference Include="Serilog" Version="4.3.0" />
       <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
