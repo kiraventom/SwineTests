@@ -129,6 +129,28 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
         _feeds = 0;
         _slaughters = 0;
 
+        // Исторические забои из прода: от них зависят и множитель кормления, и дебафф в дуэлях
+        await Exec(c =>
+        {
+            foreach (var profile in ProdProfile.All.Where(p => p.PreSlaughters > 0))
+            {
+                var swine = c.Swines.First(s => s.OwnerId == c.Users.First(u => u.TelegramId == profile.TelegramId).UserId);
+                var perOne = profile.PreSlaughterWeight / profile.PreSlaughters;
+
+                for (int i = 0; i < profile.PreSlaughters; ++i)
+                {
+                    c.Slaughters.Add(new Slaughter
+                    {
+                        UserId = swine.OwnerId,
+                        GroupId = swine.GroupId,
+                        SwineName = $"{profile.Name} {i + 1}.0",
+                        SwineWeight = perOne,
+                        DateTime = ((MockDateTimeNowProvider)DtnProvider).UtcNow.AddDays(-90 - i * 10),
+                    });
+                }
+            }
+        });
+
         await Exec(c =>
         {
             foreach (var entity in c.Feeds.AsTracking().ToList()) c.Feeds.Remove(entity);
@@ -186,7 +208,11 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
         };
 
         var result = await handler.Handle(query, token);
-        if (result is not UpdateHandleResult.CallbackQueryOK)
+
+        // Протухший или уже закрытый вызов — штатный исход, а не сбой обработки
+        if (result is not (UpdateHandleResult.CallbackQueryOK
+            or UpdateHandleResult.CallbackQueryDuelRequestExpired
+            or UpdateHandleResult.CallbackQueryDuelRequestNotFound))
         {
             _failures.Add($"{profile.Owner} callback: {result}");
             return false;
