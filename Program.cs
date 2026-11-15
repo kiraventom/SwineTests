@@ -11,11 +11,11 @@ using static System.Environment;
 
 namespace SwineTests;
 
-public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, string DbPath, string AchievDataFile);
+public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, string DbPath, string AchievDataFile);
 
 internal class Program
 {
-    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>]";
+    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>]";
 
     private const string DEFAULT_ACHIEV_PATH = "../SwineBot/Achievements/achiev_data.json";
 
@@ -67,7 +67,9 @@ internal class Program
                 .RemoveAll<IBotMessageSender>().AddSingleton<IBotMessageSender>(sp => sp.GetRequiredService<MockBotMessageSender>())
                 .RemoveAll<ICallbackQueryAnswerer>().AddSingleton<ICallbackQueryAnswerer>(sp => sp.GetRequiredService<MockCallbackQueryAnswerer>())
                 .RemoveAll<IMessageEditor>().AddSingleton<IMessageEditor>(sp => sp.GetRequiredService<MockMessageEditor>())
-                .AddHostedService<TestService>();
+                .AddSingleton<IHostedService>(provider => settings.Replay
+                    ? ActivatorUtilities.CreateInstance<ReplayService>(provider)
+                    : ActivatorUtilities.CreateInstance<TestService>(provider));
 
             var host = builder.Build();
 
@@ -128,6 +130,14 @@ internal class Program
             return null;
         }
 
+        var consent = 1.0;
+        if (values.TryGetValue("--consent", out var consentStr)
+            && (!double.TryParse(consentStr, System.Globalization.CultureInfo.InvariantCulture, out consent) || consent is < 0 or > 1))
+        {
+            Console.Error.WriteLine("--consent must be a number between 0 and 1");
+            return null;
+        }
+
         var dbPath = values.TryGetValue("--db", out var customDbPath) ? customDbPath : DefaultDbPath();
         var achievPath = values.TryGetValue("--achiev", out var customAchievPath) ? customAchievPath : DEFAULT_ACHIEV_PATH;
 
@@ -137,7 +147,7 @@ internal class Program
             return null;
         }
 
-        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, dbPath, Path.GetFullPath(achievPath));
+        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, dbPath, Path.GetFullPath(achievPath));
     }
 
     private static string DefaultDbPath()

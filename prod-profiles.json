@@ -1,0 +1,86 @@
+[
+  {
+    "id": 18,
+    "name": "люти феникс 😈",
+    "owner": "Kevish",
+    "weight": 7901,
+    "feeds90": 229,
+    "sessions90": 127,
+    "gapHours": 14.3,
+    "feedsPerSession": 1.8,
+    "slaughters90": 0,
+    "slaughterEveryDays": 0
+  },
+  {
+    "id": 41,
+    "name": "надпись не хочу умирать",
+    "owner": "Rustam",
+    "weight": 6589,
+    "feeds90": 155,
+    "sessions90": 77,
+    "gapHours": 19.1,
+    "feedsPerSession": 2.01,
+    "slaughters90": 0,
+    "slaughterEveryDays": 0
+  },
+  {
+    "id": 36,
+    "name": "пеппа",
+    "owner": "Anastasia",
+    "weight": 2809,
+    "feeds90": 99,
+    "sessions90": 91,
+    "gapHours": 24.0,
+    "feedsPerSession": 1.09,
+    "slaughters90": 0,
+    "slaughterEveryDays": 0
+  },
+  {
+    "id": 131,
+    "name": "банановый жмых",
+    "owner": "Юлия",
+    "weight": 2630,
+    "feeds90": 121,
+    "sessions90": 112,
+    "gapHours": 21.1,
+    "feedsPerSession": 1.08,
+    "slaughters90": 0,
+    "slaughterEveryDays": 0
+  },
+  {
+    "id": 181,
+    "name": "надпись не хочу сво…",
+    "owner": "🫣Вячесlove🫣",
+    "weight": 948,
+    "feeds90": 36,
+    "sessions90": 10,
+    "gapHours": 40.7,
+    "feedsPerSession": 3.6,
+    "slaughters90": 3,
+    "slaughterEveryDays": 30
+  },
+  {
+    "id": 29,
+    "name": "Мак'C'Вин",
+    "owner": "Vyacheslove",
+    "weight": 567,
+    "feeds90": 15,
+    "sessions90": 4,
+    "gapHours": 86.7,
+    "feedsPerSession": 3.75,
+    "slaughters90": 0,
+    "slaughterEveryDays": 0
+  },
+  {
+    "id": 91,
+    "name": "Халяльчик",
+    "owner": "Anton",
+    "weight": 150,
+    "feeds90": 7,
+    "sessions90": 7,
+    "gapHours": 17.7,
+    "feedsPerSession": 1.0,
+    "slaughters90": 0,
+    "slaughterEveryDays": 0
+  }
+]

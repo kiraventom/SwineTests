@@ -58,9 +58,19 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
         Check("ставка 20% от 100 кг", DuelResolution.GetStakeKg(100) == 20, DuelResolution.GetStakeKg(100).ToString());
         Check("ставка не меньше 1 кг", DuelResolution.GetStakeKg(4) == 1);
         Check("проигравший не падает ниже 1 кг", DuelResolution.GetStakeKg(1) == 0);
-        Check("штраф за отказ у андердога = 3%", DuelResolution.GetDeclineFeePercent(33) == 3);
-        Check("штраф за отказ у фаворита 67% = 16%", DuelResolution.GetDeclineFeePercent(67) == 16);
-        Check("штраф в кг не съедает последний кг", DuelResolution.GetDeclineFeeKg(2, 50) == 1);
+        // Матожидание боя для защитника равно нулю, поэтому честная цена отказа — только
+        // символический минимум: иначе отказ (каждый день) перетаскивает вес к малышам
+        Check("штраф за отказ = символический минимум (100 vs 50)",
+            DuelResolution.GetDeclineFeeKg(100, 50) == 1, DuelResolution.GetDeclineFeeKg(100, 50).ToString());
+        Check("штраф за отказ = символический минимум (150 vs 7901)",
+            DuelResolution.GetDeclineFeeKg(150, 7901) == 1, DuelResolution.GetDeclineFeeKg(150, 7901).ToString());
+        Check("штраф не съедает последний килограмм", DuelResolution.GetDeclineFeeKg(7901, 2) == 1,
+            DuelResolution.GetDeclineFeeKg(7901, 2).ToString());
+        Check("матожидание боя для защитника ≈ 0 при любой разнице весов",
+            Math.Abs(DuelResolution.GetExpectedDelta(100, 50)) < 1
+            && Math.Abs(DuelResolution.GetExpectedDelta(150, 7901)) < 1
+            && Math.Abs(DuelResolution.GetExpectedDelta(2630, 7901)) < 1,
+            $"{DuelResolution.GetExpectedDelta(100, 50):F2}, {DuelResolution.GetExpectedDelta(150, 7901):F2}, {DuelResolution.GetExpectedDelta(2630, 7901):F2}");
 
         var defenderWins = DuelResolution.Resolve(100, 50, 0.10);
         Check("бросок 0.10 — побеждает защитник", !defenderWins.AttackerWon);
@@ -169,7 +179,7 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
 
         var (_, toast) = await Press(Defender, $"decline_{request.RequestId}", token);
         var (attackerAfter, defenderAfter) = (await Weight(Attacker), await Weight(Defender));
-        var expectedFee = DuelResolution.GetDeclineFeeKg(defenderBefore, DuelResolution.GetDefenderWinChance(attackerBefore, defenderBefore));
+        var expectedFee = DuelResolution.GetDeclineFeeKg(attackerBefore, defenderBefore);
 
         Check("тост про отказ", toast?.Contains("Вызов отклонён") == true, toast);
         Check($"штраф {expectedFee} кг ушёл вызывающему", attackerAfter == attackerBefore + expectedFee && defenderAfter == defenderBefore - expectedFee,

@@ -101,7 +101,13 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
                         update = user.TryGenerateFeed(context, achievController, dt);
 
                     if (update is not null)
-                        await Handle(user, update, stoppingToken);
+                    {
+                        // Если действие съел неотвеченный вызов — отвечаем и повторяем,
+                        // как сделал бы живой игрок
+                        var wasBlockedByDuel = await Handle(user, update, stoppingToken);
+                        if (wasBlockedByDuel)
+                            await Handle(user, update, stoppingToken);
+                    }
 
                     if (Settings.DuelChance > 0 && Random.Shared.NextDouble() < Settings.DuelChance)
                         await TryStartDuel(user, stoppingToken);
@@ -127,7 +133,8 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
         }
     }
 
-    private async Task Handle(TestUser user, Telegram.Bot.Types.Update update, CancellationToken token)
+    /// <returns>true, если вместо действия бот прислал напоминание о висящем вызове</returns>
+    private async Task<bool> Handle(TestUser user, Telegram.Bot.Types.Update update, CancellationToken token)
     {
         using var scope = spf.CreateScope();
         var updateHandler = scope.ServiceProvider.GetRequiredService<IUpdateHandler>();
@@ -139,7 +146,7 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
         {
             _failures.Add($"{user.Strategy}: {updateHandleResult}");
             Console.Error.WriteLine($"{user.Strategy}: failed to handle update: {updateHandleResult}");
-            return;
+            return false;
         }
 
         var newMessages = Sender.MessagesHistory.Skip(messagesBefore).ToList();
@@ -151,8 +158,11 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
         }
 
         // Защитник упёрся в неотвеченный вызов — отвечаем на него его же руками
-        if (newMessages.Any(m => m is SwineBot.BotMessages.Duels.DuelReminderMessage))
-            await AnswerPendingDuel(user, token);
+        if (!newMessages.Any(m => m is SwineBot.BotMessages.Duels.DuelReminderMessage))
+            return false;
+
+        await AnswerPendingDuel(user, token);
+        return true;
     }
 
     /// <summary>
