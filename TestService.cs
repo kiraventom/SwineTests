@@ -422,10 +422,18 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
         Check("жадная стратегия блюёт чаще спокойной", greedyThrowups > regularThrowups,
             $"Overfeed4={greedyThrowups}, Regular={regularThrowups}");
 
-        var regularWeight = await GetWeight(context, TestUserStrategy.RegularNoOverfeed);
-        var greedyWeight = await GetWeight(context, TestUserStrategy.Overfeed4);
-        Check("спокойное кормление набирает вес лучше жадного", regularWeight > greedyWeight,
-            $"Regular={regularWeight}, Overfeed4={greedyWeight}");
+        // Вес сравнивать честно можно только без дуэлей: дуэли перетасовывают вес между свинами
+        if (Settings.DuelChance <= 0)
+        {
+            var regularWeight = await GetWeight(context, TestUserStrategy.RegularNoOverfeed);
+            var greedyWeight = await GetWeight(context, TestUserStrategy.Overfeed4);
+            Check("спокойное кормление набирает вес лучше жадного", regularWeight > greedyWeight,
+                $"Regular={regularWeight}, Overfeed4={greedyWeight}");
+        }
+        else
+        {
+            Console.WriteLine("SKIP спокойное кормление набирает вес лучше жадного: включены дуэли");
+        }
 
         var slaughterStrategies = Enum.GetValues<TestUserStrategy>().Where(s => s != TestUserStrategy.RegularNoOverfeed);
         var slaughterCounts = new List<int>();
