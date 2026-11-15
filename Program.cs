@@ -11,11 +11,11 @@ using static System.Environment;
 
 namespace SwineTests;
 
-public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, string DbPath, string AchievDataFile);
+public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, string DbPath, string AchievDataFile);
 
 internal class Program
 {
-    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter]";
+    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>]";
 
     private const string DEFAULT_ACHIEV_PATH = "../SwineBot/Achievements/achiev_data.json";
 
@@ -23,6 +23,9 @@ internal class Program
     /// Telegram validates the token format when the bot client is constructed, so the fake
     /// token must look real. Nothing is ever sent to Telegram: all senders are mocked.
     /// </summary>
+    /// <summary>Chance per user per simulated hour to challenge somebody to a duel.</summary>
+    private const double DEFAULT_DUEL_CHANCE = 0.02;
+
     private const string FAKE_TOKEN = "123456789:AAEqeqeqeqeqeqeqeqeqeqeqeqeqeqeqeqe";
 
     private static async Task<int> Main(string[] args)
@@ -117,6 +120,14 @@ internal class Program
             return null;
         }
 
+        var duelChance = DEFAULT_DUEL_CHANCE;
+        if (values.TryGetValue("--duel-chance", out var duelChanceStr)
+            && (!double.TryParse(duelChanceStr, System.Globalization.CultureInfo.InvariantCulture, out duelChance) || duelChance is < 0 or > 1))
+        {
+            Console.Error.WriteLine("--duel-chance must be a number between 0 and 1");
+            return null;
+        }
+
         var dbPath = values.TryGetValue("--db", out var customDbPath) ? customDbPath : DefaultDbPath();
         var achievPath = values.TryGetValue("--achiev", out var customAchievPath) ? customAchievPath : DEFAULT_ACHIEV_PATH;
 
@@ -126,7 +137,7 @@ internal class Program
             return null;
         }
 
-        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), dbPath, Path.GetFullPath(achievPath));
+        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, dbPath, Path.GetFullPath(achievPath));
     }
 
     private static string DefaultDbPath()

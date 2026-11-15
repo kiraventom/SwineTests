@@ -17,6 +17,8 @@ public enum TestUserStrategy
 
 public class TestUser(TestUserStrategy strategy)
 {
+    public const long GroupTelegramId = -1001337;
+
     private DateTime? _lastFeedDT;
 
     public TestUserStrategy Strategy { get; } = strategy;
@@ -32,6 +34,9 @@ public class TestUser(TestUserStrategy strategy)
     public Update GenerateSlaughter() => GenerateUpdate("/slaughter yes");
 
     public Update GenerateTop() => GenerateUpdate("/top");
+
+    /// <summary>Any command as this user, e.g. <c>/duel 1001</c> or <c>/info</c>.</summary>
+    public Update GenerateCommand(string command) => GenerateUpdate(command);
 
     public Update GenerateHistory() => GenerateUpdate("/history");
 
@@ -97,7 +102,9 @@ public class TestUser(TestUserStrategy strategy)
             {
                 Chat = new Chat()
                 {
-                    Id = -1337,
+                    // Как настоящая супергруппа: у неё есть ссылки вида t.me/c/...
+                    Id = GroupTelegramId,
+                    Type = ChatType.Supergroup,
                     Title = "Test"
                 },
                 From = new Telegram.Bot.Types.User()
