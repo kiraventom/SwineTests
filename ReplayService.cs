@@ -46,6 +46,10 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
     private int _slaughters;
 
     private readonly List<string> _series = [];
+
+    /// <summary>Калибровка «забил X — вырос до X»: пик запаса и вес в момент его выгорания.</summary>
+    private readonly Dictionary<string, double> _fuelPeak = [];
+    private readonly List<string> _burnouts = [];
     private readonly Dictionary<string, int> _duelsPerDay = [];
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -486,6 +490,17 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
             var swine = await SwineOf(context, profile.TelegramId);
             parts.Add($"{profile.Owner}:{swine.Weight}");
             total += swine.Weight;
+
+            var fuel = await context.GetMultiplierFuelAsync(swine);
+            if (fuel > 0)
+            {
+                _fuelPeak[profile.Owner] = Math.Max(_fuelPeak.GetValueOrDefault(profile.Owner), fuel);
+            }
+            else if (_fuelPeak.GetValueOrDefault(profile.Owner) >= 100)
+            {
+                _burnouts.Add($"{profile.Owner}:{_fuelPeak[profile.Owner]:F0}->{swine.Weight}");
+                _fuelPeak[profile.Owner] = 0;
+            }
         }
 
         _series.Add($"{{\"day\":{day},\"total\":{total},\"weights\":{{{string.Join(",", parts.Select(p => $"\"{p.Split(':')[0]}\":{p.Split(':')[1]}"))}}}}}");
@@ -548,6 +563,8 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
         var upsets = await allFights.CountAsync(r => r.WinnerWeightBefore * DuelBalance.UpsetWeightRatio <= r.LoserWeightBefore);
         var gloryTotal = await context.Swines.SumAsync(s => (int?)s.Glory) ?? 0;
         var gloryPositive = await context.Swines.CountAsync(s => s.Glory > 0);
+        Console.WriteLine($"выгорания множителя (накопил->вес): {( _burnouts.Count == 0 ? "нет" : string.Join(", ", _burnouts))}");
+
         Console.WriteLine($"боёв {fightsTotal}, апсетов {upsets} "
             + $"({(fightsTotal == 0 ? 0 : 100 * upsets / fightsTotal)}%), слава в плюсе у {gloryPositive} свинов, сумма славы {gloryTotal}");
 

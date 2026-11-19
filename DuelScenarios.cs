@@ -378,6 +378,23 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
             Math.Abs(modifierAfterLow - modifierAfterTop) < 1e-9,
             $"{modifierAfterTop:F4} -> {modifierAfterLow:F4}");
 
+        // Связь «банк -> бонусная масса»: за кормёжку тратится ровно FuelPerBonusKg
+        // на килограмм бонуса, поэтому банк X даёт X / FuelPerBonusKg бонусных килограммов
+        Advance(48);
+        await SetWeights(8_000, 10_000);
+        var fuelBefore = await Db(c => c.GetMultiplierFuelAsync(SwineOf(c, Attacker)));
+        var modifier = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
+        var weightBefore = await Weight(Attacker);
+        await Send(Attacker, "/feed", token);
+        var weightAfter = await Weight(Attacker);
+        var fuelAfter = await Db(c => c.GetMultiplierFuelAsync(SwineOf(c, Attacker)));
+        var gained = weightAfter - weightBefore;
+        var spent = fuelBefore - fuelAfter;
+        var expectedBase = Math.Max(1, gained - spent / 1.5);
+        Check("трата запаса равна бонусной массе × коэффициент",
+            spent > 0 && Math.Abs(spent / GrowthBalance.FuelPerBonusKg - (gained - expectedBase)) < 1.0,
+            $"съел {gained} кг, запас {fuelBefore:F0} -> {fuelAfter:F0} (списано {spent:F1}), множитель {modifier:F2}");
+
         Advance(48);
     }
 
