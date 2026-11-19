@@ -13,7 +13,7 @@ import sys
 
 RESULTS = os.path.join(os.path.dirname(__file__), "results")
 
-ROW = re.compile(r"^(\S+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)/(\d+)\s+(\d+)\s+(-?\d+)\s+(\d+)\s*$")
+ROW = re.compile(r"^(\S+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(\d+)\s+(\d+)\s+(\d+)/(\d+)\s+(\d+)\s+(-?\d+)\s+([\d.]+)\s+(\d+)\s*$")
 RESULT = re.compile(r"RESULT consent=[\d.]+ duels=(\d+) accepted=(\d+) declined=(\d+) upsets=(\d+) "
                     r"glory=(-?\d+) bigDelta=(-?\d+) smallDelta=(-?\d+) totalDelta=(-?\d+) weights=(.+)")
 GOLDEN = ("Kevish", "Ганс")
@@ -34,7 +34,8 @@ def load(prefix):
                                         delta=int(r.group(4)), feeds=int(r.group(5)),
                                         throws=int(r.group(6)), wins=int(r.group(7)),
                                         losses=int(r.group(8)), decl=int(r.group(9)),
-                                        glory=int(r.group(10)), slaugh=int(r.group(11)))
+                                        glory=int(r.group(10)), mod=float(r.group(11)),
+                                        slaugh=int(r.group(12)))
         runs.append(dict(name=os.path.basename(path),
                          duels=int(m.group(1)), accepted=int(m.group(2)), declined=int(m.group(3)),
                          upsets=int(m.group(4)), glory=int(m.group(5)), rows=rows))
@@ -73,6 +74,11 @@ def main(prefix):
     print(f"разрыв:  медиана {st.median(gap):+7.0f}  среднее {st.mean(gap):+7.0f}  sd {st.pstdev(gap):6.0f}")
     print(f"Kevish впереди: {sum(1 for g in gap if g > 0)}/{n}")
     print(f"убийца ниже 10 000: {sum(1 for h in han if h < 10000)}/{n}")
+
+    for who in ("Kevish", "Ганс"):
+        mods = [r["rows"][who]["mod"] for r in runs if who in r["rows"]]
+        if mods:
+            print(f"множитель {who}: медиана {st.median(mods):.2f}  макс {max(mods):.2f}")
     print(f"кто-то обнулился (<500 кг): {sum(1 for r in runs for v in r['rows'].values() if v['final'] < 500)} случаев")
 
 

@@ -11,16 +11,22 @@ using static System.Environment;
 
 namespace SwineTests;
 
-public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool Glory, int StopSlaughterDay, bool IncludeKiller, double StakeShare, string Duelists, int MinChance, int MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double GrowthK, string DbPath, string AchievDataFile);
+public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool Glory, int StopSlaughterDay, bool IncludeKiller, double StakeShare, string Duelists, int MinChance, int MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double GrowthK, double ModDecay, double EliteShare, string DbPath, string AchievDataFile);
 
 internal class Program
 {
-    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>] [--duels-from <day>] [--chance age|witness|achievements|none] [--debuff feed-steal|depreciate|none] [--no-glory] [--stop-slaughter <day>] [--killer] [--stake <0..1>] [--duelists Kevish,Ганс] [--min-chance <5..50>] [--max-chance <50..95>] [--min-weight-ratio <0..1>] [--call-model nearest|any] [--growth sqrt|linear] [--growth-k <0..1>]";
+    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>] [--duels-from <day>] [--chance age|witness|achievements|none] [--debuff feed-steal|depreciate|none] [--no-glory] [--stop-slaughter <day>] [--killer] [--stake <0..1>] [--duelists Kevish,Ганс] [--min-chance <5..50>] [--max-chance <50..95>] [--min-weight-ratio <0..1>] [--call-model nearest|any] [--growth sqrt|linear] [--growth-k <0..1>] [--mod-decay <0..1>] [--elite-share <0..1>]";
 
     private const string DEFAULT_ACHIEV_PATH = "../SwineBot/Achievements/achiev_data.json";
 
     /// <summary>Коэффициент суб-линейного роста по умолчанию — как в боте.</summary>
     private const double GrowthDefaultK = 0.010;
+
+    /// <summary>Доля излишка множителя, которая тратится за кормёжку выше порога.</summary>
+    private const double GrowthDefaultDecay = 0.004;
+
+    /// <summary>Доля веса лидера, с которой начинается трата.</summary>
+    private const double GrowthDefaultEliteShare = 0.75;
 
     /// <summary>
     /// Telegram validates the token format when the bot client is constructed, so the fake
@@ -59,6 +65,8 @@ internal class Program
         // Модель роста от забоёв: линейная (старая) или суб-линейная (корень)
         SwineBot.Model.GrowthBalance.SubLinear = settings.GrowthModel == "sqrt";
         SwineBot.Model.GrowthBalance.PerSqrtKg = settings.GrowthK;
+        SwineBot.Model.GrowthBalance.MultiplierDecayShare = settings.ModDecay;
+        SwineBot.Model.GrowthBalance.EliteThresholdShare = settings.EliteShare;
 
         SwineBot.Actions.Commands.Duel.DuelBalance.GloryEnabled = settings.Glory;
         SwineBot.Actions.Commands.Duel.DuelBalance.StakeShare = settings.StakeShare;
@@ -241,6 +249,22 @@ internal class Program
             return null;
         }
 
+        var modDecay = GrowthDefaultDecay;
+        if (values.TryGetValue("--mod-decay", out var decayStr)
+            && (!double.TryParse(decayStr, System.Globalization.CultureInfo.InvariantCulture, out modDecay) || modDecay is < 0 or > 1))
+        {
+            Console.Error.WriteLine("--mod-decay must be a number between 0 and 1");
+            return null;
+        }
+
+        var eliteShare = GrowthDefaultEliteShare;
+        if (values.TryGetValue("--elite-share", out var shareStr)
+            && (!double.TryParse(shareStr, System.Globalization.CultureInfo.InvariantCulture, out eliteShare) || eliteShare is <= 0 or > 1))
+        {
+            Console.Error.WriteLine("--elite-share must be a number between 0 and 1");
+            return null;
+        }
+
         var callModel = "nearest";
         if (values.TryGetValue("--call-model", out var callModelStr))
         {
@@ -262,7 +286,7 @@ internal class Program
             return null;
         }
 
-        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, !flags.Contains("--no-glory"), stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, dbPath, Path.GetFullPath(achievPath));
+        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, !flags.Contains("--no-glory"), stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, modDecay, eliteShare, dbPath, Path.GetFullPath(achievPath));
     }
 
     private static string DefaultDbPath()

@@ -41,6 +41,7 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
         await StepIgnoredRequestIsDecline(token);
         await StepSlaughterUnderRequestIsDecline(token);
         await StepInfoDoesNotCountDeclines(token);
+        await StepMultiplierDecay(token);
 
         return _failures;
     }
@@ -347,6 +348,39 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
             or UpdateHandleResult.MessageSuccesfulMigration;
 
     /// <summary>Создаёт защитнику историю забоёв (и slaughter-бонус, который можно отобрать).</summary>
+    /// <summary>
+    /// Трата множителя роста: выше порога веса — падает, ниже — нет.
+    /// Порог берётся от веса самого толстого свина беседы.
+    /// </summary>
+    private async Task StepMultiplierDecay(CancellationToken token)
+    {
+        Console.WriteLine("-- трата множителя выше порога");
+
+        Advance(48);
+        await SetWeights(10_000, 8_000);
+        await GiveSlaughters(Attacker, 6);
+
+        var modifierBefore = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
+        Check("у свина есть запас от забоёв", modifierBefore > 1.0, modifierBefore.ToString("F4"));
+
+        // 8 000 кг при лидере 10 000 — это выше 75% порога: кормёжка тратит запас
+        await Send(Attacker, "/feed", token);
+        var modifierAfterTop = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
+        Check("выше порога множитель тратится", modifierBefore - modifierAfterTop > 1e-4,
+            $"{modifierBefore:F4} -> {modifierAfterTop:F4}");
+
+        // 1 000 кг при том же лидере — ниже порога: запас не тронут
+        Advance(48);
+        await SetWeights(1_000, 10_000);
+        await Send(Attacker, "/feed", token);
+        var modifierAfterLow = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
+        Check("ниже порога множитель не тратится",
+            Math.Abs(modifierAfterLow - modifierAfterTop) < 1e-9,
+            $"{modifierAfterTop:F4} -> {modifierAfterLow:F4}");
+
+        Advance(48);
+    }
+
     private async Task GiveSlaughters(TestUser user, int count)
     {
         await Exec(c =>

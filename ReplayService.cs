@@ -498,7 +498,7 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
 
         Console.WriteLine();
         Console.WriteLine($"=== Replay summary ({Settings.DaysCount} дней) ===");
-        Console.WriteLine($"{"owner",-14} {"start",7} {"final",7} {"delta",7} {"feeds",6} {"throws",6} {"duels",7} {"decl",5} {"glory",6} {"slaugh",6}");
+        Console.WriteLine($"{"owner",-14} {"start",7} {"final",7} {"delta",7} {"feeds",6} {"throws",6} {"duels",7} {"decl",5} {"glory",6} {"mod",5} {"slaugh",6}");
 
         var startWeights = new Dictionary<long, int>();
         var finalWeights = new Dictionary<long, int>();
@@ -522,7 +522,7 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
             fightsWon[profile.TelegramId] = won;
             fightsLost[profile.TelegramId] = lost;
 
-            Console.WriteLine($"{profile.Owner,-14} {profile.StartWeight,7} {swine.Weight,7} {swine.Weight - profile.StartWeight,7} {feeds,6} {throws,6} {$"{won}/{lost}",7} {declines,5} {swine.Glory,6} {slaughters,6}");
+            Console.WriteLine($"{profile.Owner,-14} {profile.StartWeight,7} {swine.Weight,7} {swine.Weight - profile.StartWeight,7} {feeds,6} {throws,6} {$"{won}/{lost}",7} {declines,5} {swine.Glory,6} {await context.GetGrowthModifierAsync(swine),5:F2} {slaughters,6}");
         }
 
         var startTotal = startWeights.Values.Sum();
