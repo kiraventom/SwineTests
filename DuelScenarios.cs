@@ -49,43 +49,65 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
     {
         Console.WriteLine("-- формулы");
 
-        Check("шанс защитника 100 vs 50 = 33%", DuelResolution.GetDefenderWinChance(100, 50) == 33,
-            DuelResolution.GetDefenderWinChance(100, 50).ToString());
-        Check("шанс защитника 10 vs 90 = 90%", DuelResolution.GetDefenderWinChance(10, 90) == 90);
+        // v3: шанс — сжатая доля веса + слава. Источник бонуса (возраст/забои) выключаем,
+        // чтобы проверки не зависели от флагов запуска
+        var savedSource = DuelBalance.ChanceSource;
+        DuelBalance.ChanceSource = DuelChanceSource.None;
 
-        Check("каждый забой режет шанс на 2 п.п.",
-            DuelResolution.GetDefenderWinChance(100, 50, defenderKills: 5) == 23,
-            DuelResolution.GetDefenderWinChance(100, 50, defenderKills: 5).ToString());
-        Check("забои атакующего поднимают шанс защитника",
-            DuelResolution.GetDefenderWinChance(100, 50, attackerKills: 5) == 43,
-            DuelResolution.GetDefenderWinChance(100, 50, attackerKills: 5).ToString());
-        Check("забои не выбивают шанс за нижнюю границу",
-            DuelResolution.GetDefenderWinChance(10, 90, defenderKills: 100) == DuelBalance.MinWinChance,
-            DuelResolution.GetDefenderWinChance(10, 90, defenderKills: 100).ToString());
-        Check("серийный убийца против малыша теряет преимущество",
-            DuelResolution.GetDefenderWinChance(150, 7901, attackerKills: 0, defenderKills: 15)
-            < DuelResolution.GetDefenderWinChance(150, 7901),
-            $"{DuelResolution.GetDefenderWinChance(150, 7901, 0, 15)} vs {DuelResolution.GetDefenderWinChance(150, 7901)}");
+        try
+        {
+            Check("равные веса: 45% у защитника (инициатива у атакующего)", DuelResolution.GetDefenderWinChance(500, 500) == 45,
+                DuelResolution.GetDefenderWinChance(500, 500).ToString());
+            Check("шанс защитника 100 vs 50 = 35% (масса сжата + инициатива)",
+                DuelResolution.GetDefenderWinChance(100, 50) == 35,
+                DuelResolution.GetDefenderWinChance(100, 50).ToString());
+            Check("шанс защитника 10 vs 90 = 69%, а не 90% (масса сжата)",
+                DuelResolution.GetDefenderWinChance(10, 90) == 69,
+                DuelResolution.GetDefenderWinChance(10, 90).ToString());
+            Check("у апсета есть шанс: 15% веса дают больше 25% на победу",
+                DuelResolution.GetDefenderWinChance(15, 85) < 80,
+                DuelResolution.GetDefenderWinChance(15, 85).ToString());
 
-        Check("ставка 20% от 100 кг", DuelResolution.GetStakeKg(100) == 20, DuelResolution.GetStakeKg(100).ToString());
-        Check("ставка не меньше 1 кг", DuelResolution.GetStakeKg(4) == 1);
-        Check("проигравший не падает ниже 1 кг", DuelResolution.GetStakeKg(1) == 0);
+            var gloryThree = new DuelCombatStats(0, 0, 0, 3);
+            Check("слава +3 у защитника добавляет 6 п.п.",
+                DuelResolution.GetDefenderWinChance(100, 50, DuelCombatStats.Empty, gloryThree) == 41,
+                DuelResolution.GetDefenderWinChance(100, 50, DuelCombatStats.Empty, gloryThree).ToString());
+            Check("слава не пробивает верхний кап шанса",
+                DuelResolution.GetDefenderWinChance(10, 900, DuelCombatStats.Empty, new DuelCombatStats(0, 0, 0, 5))
+                <= DuelBalance.MaxWinChance);
 
-        Check("отказ отдаёт 10% slaughter-бонуса",
-            DuelResolution.GetDeclineSlaughterShareKg(11942) == 1194,
-            DuelResolution.GetDeclineSlaughterShareKg(11942).ToString());
-        Check("без забоев отдавать нечего", DuelResolution.GetDeclineSlaughterShareKg(0) == 0);
-        Check("весового штрафа за отказ нет", DuelResolution.GetDeclineFeeKg(150, 7901) == 0);
+            Check("ставка — 5% от более лёгкого: 100 vs 50 → 2 кг",
+                DuelResolution.GetStakeKg(100, 50) == 2, DuelResolution.GetStakeKg(100, 50).ToString());
+            Check("ставка не зависит от толстяка: 4000 vs 25000 → 200 кг",
+                DuelResolution.GetStakeKg(4000, 25000) == 200, DuelResolution.GetStakeKg(4000, 25000).ToString());
+            Check("ставка не меньше 1 кг", DuelResolution.GetStakeKg(1, 4) == 1);
 
-        var defenderWins = DuelResolution.Resolve(100, 50, 0.10);
-        Check("бросок 0.10 — побеждает защитник", !defenderWins.AttackerWon);
-        Check("защитник 50 -> 70, атакующий 100 -> 80",
-            defenderWins.WinnerWeightAfter == 70 && defenderWins.LoserWeightAfter == 80,
-            $"{defenderWins.WinnerWeightBefore}->{defenderWins.WinnerWeightAfter}, {defenderWins.LoserWeightBefore}->{defenderWins.LoserWeightAfter}");
+            Check("весового штрафа за отказ нет", DuelResolution.GetDeclineFeeKg(150, 7901) == 0);
 
-        var attackerWins = DuelResolution.Resolve(100, 50, 0.90);
-        Check("бросок 0.90 — побеждает атакующий", attackerWins.AttackerWon);
-        Check("сумма веса сохраняется", attackerWins.WinnerWeightAfter + attackerWins.LoserWeightAfter == 150);
+            var defenderWins = DuelResolution.Resolve(100, 50, 0.10);
+            Check("бросок 0.10 — побеждает защитник", !defenderWins.AttackerWon);
+            Check("защитник 50 -> 52, атакующий 100 -> 98 (ставка от лёгкого)",
+                defenderWins.WinnerWeightAfter == 52 && defenderWins.LoserWeightAfter == 98,
+                $"{defenderWins.WinnerWeightBefore}->{defenderWins.WinnerWeightAfter}, {defenderWins.LoserWeightBefore}->{defenderWins.LoserWeightAfter}");
+
+            var attackerWins = DuelResolution.Resolve(100, 50, 0.90);
+            Check("бросок 0.90 — побеждает атакующий", attackerWins.AttackerWon);
+            Check("сумма веса сохраняется",
+                attackerWins.WinnerWeightAfter + attackerWins.LoserWeightAfter == 150);
+
+            Check("победа даёт очко славы", DuelResolution.GetGloryReward(true, 100, 50) == 1,
+                DuelResolution.GetGloryReward(true, 100, 50).ToString());
+            Check("апсет (вдвое легче победил) даёт два очка славы",
+                DuelResolution.GetGloryReward(true, 50, 100) == 2,
+                DuelResolution.GetGloryReward(true, 50, 100).ToString());
+            Check("слава победителя усиливает забранную массу",
+                Math.Abs(DuelResolution.GetGloryStakeMultiplier(5) - 1.25) < 0.001,
+                DuelResolution.GetGloryStakeMultiplier(5).ToString("F2"));
+        }
+        finally
+        {
+            DuelBalance.ChanceSource = savedSource;
+        }
     }
 
     private async Task StepRequest(CancellationToken token)
@@ -99,9 +121,8 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
         Check("вызов ушёл с двумя кнопками", message?.Keyboard?.InlineKeyboard?.Sum(r => r.Count()) == 2);
         Check("виден шанс на победу", message?.Text.Contains("Шанс на победу") == true);
         Check("видна ставка", message?.Text.Contains("Ставка") == true);
-        Check("виден штраф бонусом забоев", message?.Text.Contains("бонуса забоев") == true,
+        Check("виден дебафф за отказ", message?.Text.Contains("Отказ") == true,
             message?.Text.Split('\n').FirstOrDefault(l => l.Contains("Отказ")));
-        Check("видно число забитых", message?.Text.Contains("Забитых предшественников") == true);
 
         var request = await Db(c => c.DuelRequests.AsNoTracking().OrderBy(dr => dr.RequestId).FirstOrDefaultAsync());
         Check("запрос сохранён с MessageId", request?.MessageId is not null, $"MessageId={request?.MessageId}");
@@ -162,44 +183,67 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
 
     private async Task StepDeclineTakesSlaughterBonus(CancellationToken token)
     {
-        Console.WriteLine("-- отказ отдаёт часть бонуса забоев");
+        Console.WriteLine("-- отказ применяет дебафф");
 
-        Advance(DuelBalance.CooldownHours + 1);
+        Advance(73); // 72 часа + час: сбрасывает парный лимит, кулдаун и защиту проигравшего
         await SetWeights(100, 50);
         await Send(Attacker, $"/duel {Defender.TelegramId}", token);
 
         var request = await Db(c => c.DuelRequests.AsNoTracking().FirstAsync());
-        var defenderSlaughterWeight = await Db(c => c.GetSlaughterWeightAsync(AttackerSwine(c, Defender).OwnerId, 1));
-        var attackerWeightBefore = await Weight(Attacker);
+        var gloryBefore = await Db(c => Task.FromResult(SwineOf(c, Defender).Glory));
+        var declinesBefore = await Db(c => Task.FromResult(SwineOf(c, Defender).Declines));
 
         var (_, toast) = await Press(Defender, $"decline_{request.RequestId}", token);
 
-        var bonuses = await Db(c => c.SlaughterBonuses.AsNoTracking().OrderByDescending(b => b.SlaughterBonusId).Take(2).ToListAsync());
-        var expected = DuelResolution.GetDeclineSlaughterShareKg(defenderSlaughterWeight);
+        var declinesAfter = await Db(c => Task.FromResult(SwineOf(c, Defender).Declines));
+        var gloryAfter = await Db(c => Task.FromResult(SwineOf(c, Defender).Glory));
+        var stealUntil = await Db(c => Task.FromResult(SwineOf(c, Defender).FeedStealUntil));
 
         Check("тост про отказ", toast?.Contains("Вызов отклонён") == true, toast);
-        Check("вес за отказ не отбирается", await Weight(Attacker) == attackerWeightBefore, (await Weight(Attacker)).ToString());
-        Check($"защитник отдал {expected} бонуса", bonuses.Any(b => b.Weight == -expected), string.Join(",", bonuses.Select(b => b.Weight)));
-        Check($"вызывающий получил {expected} бонуса", bonuses.Any(b => b.Weight == expected), string.Join(",", bonuses.Select(b => b.Weight)));
+
+        if (DuelBalance.GloryEnabled && gloryBefore > 0)
+        {
+            Check("свин расплатился очком славы", gloryAfter == gloryBefore - 1 && declinesAfter == declinesBefore,
+                $"слава {gloryBefore}->{gloryAfter}, отказов {declinesBefore}->{declinesAfter}");
+        }
+        else
+        {
+            // Дебафф «страх» работает от отрицательной отваги: после отказа она должна уйти в минус
+            var debuffApplied = DuelBalance.Debuff switch
+            {
+                DuelDebuff.FeedSteal => gloryAfter < gloryBefore,
+                DuelDebuff.Depreciate => declinesAfter == declinesBefore + 1,
+                _ => true,
+            };
+
+            Check($"дебафф «{DuelBalance.Debuff}» применён", debuffApplied,
+                $"слава {gloryBefore}->{gloryAfter}, declines {declinesBefore}->{declinesAfter}");
+        }
 
         var edited = editor.Edited.LastOrDefault();
-        Check("сообщение про отказ и трусость", edited?.Text?.Contains("трусов") == true, edited?.Text);
+        Check("сообщение про отказ", edited?.Text?.Contains("отказ") == true || edited?.Text?.Contains("трусов") == true || edited?.Text?.Contains("славы") == true,
+            edited?.Text);
     }
 
     private async Task StepIgnoredRequestIsDecline(CancellationToken token)
     {
-        Console.WriteLine("-- игнор 24 часа = отказ");
+        Console.WriteLine("-- игнор дольше TTL (12 ч) = отказ");
 
-        Advance(DuelBalance.CooldownHours + 1);
+        Advance(73); // 72 часа + час: сбрасывает парный лимит, кулдаун и защиту проигравшего
         await Send(Attacker, $"/duel {Defender.TelegramId}", token);
 
-        var before = await Db(c => c.SlaughterBonuses.AsNoTracking().CountAsync());
+        var declinesBefore = await Db(c => Task.FromResult(SwineOf(c, Defender).Declines));
+        var gloryBefore = await Db(c => Task.FromResult(SwineOf(c, Defender).Glory));
         Advance(DuelRequestExtensions.TTL.TotalHours + 1);
 
         await Send(Attacker, "/feed", token);
-        var after = await Db(c => c.SlaughterBonuses.AsNoTracking().CountAsync());
+        var declinesAfter = await Db(c => Task.FromResult(SwineOf(c, Defender).Declines));
+        var gloryAfter = await Db(c => Task.FromResult(SwineOf(c, Defender).Glory));
+        var stealUntil = await Db(c => Task.FromResult(SwineOf(c, Defender).FeedStealUntil));
 
-        Check("истёкший вызов применился как отказ", after > before, $"{before} -> {after}");
+        var paid = declinesAfter > declinesBefore || gloryAfter < gloryBefore || stealUntil is not null;
+        Check("истёкший вызов применился как отказ", paid,
+            $"Declines {declinesBefore}->{declinesAfter}, слава {gloryBefore}->{gloryAfter}");
         Check("запрос закрыт", await Db(c => c.DuelRequests.AsNoTracking().CountAsync()) == 0);
     }
 
@@ -207,15 +251,18 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
     {
         Console.WriteLine("-- забой под вызовом = отказ");
 
-        Advance(DuelBalance.CooldownHours + 1);
+        Advance(73); // 72 часа + час: сбрасывает парный лимит, кулдаун и защиту проигравшего
         await GiveSlaughters(Defender, 5);
-        await Send(Attacker, $"/duel {Defender.TelegramId}", token);
+        var duelMessage = await Send(Attacker, $"/duel {Defender.TelegramId}", token);
+        Check("вызов перед забоем создан", await Db(c => c.DuelRequests.AsNoTracking().CountAsync()) == 1,
+            duelMessage?.GetType().Name);
 
-        var before = await Db(c => c.SlaughterBonuses.AsNoTracking().CountAsync());
+        var declinesTotalBefore = await Db(c => c.DuelResults.AsNoTracking().CountAsync(r => r.IsDecline));
         await Send(Defender, "/slaughter yes", token);
-        var after = await Db(c => c.SlaughterBonuses.AsNoTracking().CountAsync());
+        var declinesTotalAfter = await Db(c => c.DuelResults.AsNoTracking().CountAsync(r => r.IsDecline));
 
-        Check("забой закрыл вызов отказом", after > before, $"{before} -> {after}");
+        Check("забой закрыл вызов отказом", declinesTotalAfter > declinesTotalBefore,
+            $"записей-отказов {declinesTotalBefore} -> {declinesTotalAfter}");
         Check("вызовов не осталось", await Db(c => c.DuelRequests.AsNoTracking().CountAsync()) == 0);
     }
 

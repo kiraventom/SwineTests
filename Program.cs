@@ -11,13 +11,16 @@ using static System.Environment;
 
 namespace SwineTests;
 
-public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, string DbPath, string AchievDataFile);
+public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool Glory, int StopSlaughterDay, bool IncludeKiller, double StakeShare, string Duelists, int MinChance, int MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double GrowthK, string DbPath, string AchievDataFile);
 
 internal class Program
 {
-    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>]";
+    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>] [--duels-from <day>] [--chance age|witness|achievements|none] [--debuff feed-steal|depreciate|none] [--no-glory] [--stop-slaughter <day>] [--killer] [--stake <0..1>] [--duelists Kevish,Ганс] [--min-chance <5..50>] [--max-chance <50..95>] [--min-weight-ratio <0..1>] [--call-model nearest|any] [--growth sqrt|linear] [--growth-k <0..1>]";
 
     private const string DEFAULT_ACHIEV_PATH = "../SwineBot/Achievements/achiev_data.json";
+
+    /// <summary>Коэффициент суб-линейного роста по умолчанию — как в боте.</summary>
+    private const double GrowthDefaultK = 0.010;
 
     /// <summary>
     /// Telegram validates the token format when the bot client is constructed, so the fake
@@ -36,6 +39,31 @@ internal class Program
             Console.Error.WriteLine(USAGE);
             return 2;
         }
+
+        // Настройки боевых механик передаём в бот до старта хоста
+        SwineBot.Actions.Commands.Duel.DuelBalance.ChanceSource = settings.ChanceSource switch
+        {
+            "age" => SwineBot.Actions.Commands.Duel.DuelChanceSource.Age,
+            "witness" => SwineBot.Actions.Commands.Duel.DuelChanceSource.WitnessedKills,
+            "achievements" => SwineBot.Actions.Commands.Duel.DuelChanceSource.Achievements,
+            _ => SwineBot.Actions.Commands.Duel.DuelChanceSource.None,
+        };
+
+        SwineBot.Actions.Commands.Duel.DuelBalance.Debuff = settings.Debuff switch
+        {
+            "feed-steal" => SwineBot.Actions.Commands.Duel.DuelDebuff.FeedSteal,
+            "depreciate" => SwineBot.Actions.Commands.Duel.DuelDebuff.Depreciate,
+            _ => SwineBot.Actions.Commands.Duel.DuelDebuff.None,
+        };
+
+        // Модель роста от забоёв: линейная (старая) или суб-линейная (корень)
+        SwineBot.Model.GrowthBalance.SubLinear = settings.GrowthModel == "sqrt";
+        SwineBot.Model.GrowthBalance.PerSqrtKg = settings.GrowthK;
+
+        SwineBot.Actions.Commands.Duel.DuelBalance.GloryEnabled = settings.Glory;
+        SwineBot.Actions.Commands.Duel.DuelBalance.StakeShare = settings.StakeShare;
+        SwineBot.Actions.Commands.Duel.DuelBalance.MinWinChance = settings.MinChance;
+        SwineBot.Actions.Commands.Duel.DuelBalance.MaxWinChance = settings.MaxChance;
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -130,12 +158,99 @@ internal class Program
             return null;
         }
 
-        var consent = 1.0;
+        var consent = 0.55;
         if (values.TryGetValue("--consent", out var consentStr)
             && (!double.TryParse(consentStr, System.Globalization.CultureInfo.InvariantCulture, out consent) || consent is < 0 or > 1))
         {
             Console.Error.WriteLine("--consent must be a number between 0 and 1");
             return null;
+        }
+
+        var duelsFromDay = 0;
+        if (values.TryGetValue("--duels-from", out var duelsFromStr)
+            && (!int.TryParse(duelsFromStr, out duelsFromDay) || duelsFromDay < 0))
+        {
+            Console.Error.WriteLine("--duels-from must be a non-negative day number");
+            return null;
+        }
+
+        var chanceSource = values.TryGetValue("--chance", out var chanceStr) ? chanceStr : "none";
+        if (!new[] { "age", "witness", "achievements", "none" }.Contains(chanceSource))
+        {
+            Console.Error.WriteLine("--chance must be age, witness, achievements or none");
+            return null;
+        }
+
+        var debuff = values.TryGetValue("--debuff", out var debuffStr) ? debuffStr : "none";
+        if (!new[] { "feed-steal", "depreciate", "none" }.Contains(debuff))
+        {
+            Console.Error.WriteLine("--debuff must be feed-steal, depreciate or none");
+            return null;
+        }
+
+        var stopSlaughterDay = -1;
+        if (values.TryGetValue("--stop-slaughter", out var stopStr)
+            && (!int.TryParse(stopStr, out stopSlaughterDay) || stopSlaughterDay < 0))
+        {
+            Console.Error.WriteLine("--stop-slaughter must be a non-negative day number");
+            return null;
+        }
+
+        var stakeShare = 0.05;
+        if (values.TryGetValue("--stake", out var stakeStr)
+            && (!double.TryParse(stakeStr, System.Globalization.CultureInfo.InvariantCulture, out stakeShare) || stakeShare is <= 0 or > 1))
+        {
+            Console.Error.WriteLine("--stake must be a number between 0 and 1");
+            return null;
+        }
+
+        var minChance = 5;
+        var maxChance = 95;
+        if (values.TryGetValue("--min-chance", out var minStr) && !int.TryParse(minStr, out minChance))
+        {
+            Console.Error.WriteLine("--min-chance must be an integer");
+            return null;
+        }
+
+        if (values.TryGetValue("--max-chance", out var maxStr) && !int.TryParse(maxStr, out maxChance))
+        {
+            Console.Error.WriteLine("--max-chance must be an integer");
+            return null;
+        }
+
+        var minWeightRatio = 0.0;
+        if (values.TryGetValue("--min-weight-ratio", out var ratioStr)
+            && (!double.TryParse(ratioStr, System.Globalization.CultureInfo.InvariantCulture, out minWeightRatio) || minWeightRatio is < 0 or > 1))
+        {
+            Console.Error.WriteLine("--min-weight-ratio must be a number between 0 and 1");
+            return null;
+        }
+
+        var growthModel = values.TryGetValue("--growth", out var growthStr) ? growthStr : "sqrt";
+        if (!new[] { "sqrt", "linear" }.Contains(growthModel))
+        {
+            Console.Error.WriteLine("--growth must be sqrt or linear");
+            return null;
+        }
+
+        var growthK = GrowthDefaultK;
+        if (values.TryGetValue("--growth-k", out var growthKStr)
+            && (!double.TryParse(growthKStr, System.Globalization.CultureInfo.InvariantCulture, out growthK) || growthK is <= 0 or > 1))
+        {
+            Console.Error.WriteLine("--growth-k must be a number between 0 and 1");
+            return null;
+        }
+
+        var callModel = "nearest";
+        if (values.TryGetValue("--call-model", out var callModelStr))
+        {
+            if (callModelStr is not ("nearest" or "any"))
+            {
+                Console.Error.WriteLine("--call-model must be nearest or any");
+                return null;
+            }
+
+            callModel = callModelStr;
         }
 
         var dbPath = values.TryGetValue("--db", out var customDbPath) ? customDbPath : DefaultDbPath();
@@ -147,7 +262,7 @@ internal class Program
             return null;
         }
 
-        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, dbPath, Path.GetFullPath(achievPath));
+        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, !flags.Contains("--no-glory"), stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, dbPath, Path.GetFullPath(achievPath));
     }
 
     private static string DefaultDbPath()

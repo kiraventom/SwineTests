@@ -193,7 +193,7 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
 
     private static async Task<bool> CanDuel(UserContext context, int swineId, DateTime now)
     {
-        var cooldownStart = now.AddHours(-DuelBalance.CooldownHours);
+        var cooldownStart = now.AddHours(-DuelBalance.DefendCooldownHours);
 
         var onCooldown = await context.DuelResults.AnyAsync(r =>
             (r.AttackerId == swineId || r.DefenderId == swineId) && r.DateTime > cooldownStart);
@@ -206,7 +206,7 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
 
     private static async Task<long?> FindOpponent(UserContext context, Swine challenger, DateTime now)
     {
-        var cooldownStart = now.AddHours(-DuelBalance.CooldownHours);
+        var cooldownStart = now.AddHours(-DuelBalance.DefendCooldownHours);
         var requestTtlStart = now - DuelRequestExtensions.TTL;
 
         var candidates = await context.Swines

@@ -1,14 +1,17 @@
 #!/bin/bash
-# Матрица прогонов реплея прод-беседы: 3 без дуэлей + 4 режима согласия x 3 прогона.
-# Параллельность 3: на стенде 2 CPU, больше — только мешают друг другу.
+# Матрица прогонов реплея прод-беседы: 3 без дуэлей + 4 политики согласия x 3 прогона.
+# Дуэли включаются с 30-го дня из 90 — на графиках это видно как излом.
+# Параллельность 2: на стенде 2 CPU.
 set -u
 export PATH="$HOME/.dotnet:$HOME/.dotnet/tools:$PATH"
+export DOTNET_ROOT="$HOME/.dotnet"
 cd "$(dirname "$0")"
 mkdir -p results
 
 run_one() {
   local name="$1"; shift
-  dotnet run -c Debug --no-build -- --replay --days 90 --db "/tmp/replay-$name.db" "$@" > "results/replay-$name.log" 2>&1
+  REPLAY_SERIES="series-$name" dotnet run -c Debug --no-build -- --replay --days 90 --duels-from 30 --no-slaughter \
+    --db "/tmp/replay-$name.db" "$@" > "results/replay-$name.log" 2>&1
   echo "$name exit=$?"
 }
 
