@@ -11,16 +11,16 @@ using static System.Environment;
 
 namespace SwineTests;
 
-public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool Glory, int StopSlaughterDay, bool IncludeKiller, double StakeShare, string Duelists, int MinChance, int MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double GrowthK, double ModFuel, double EliteShare, string DbPath, string AchievDataFile);
+public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool Glory, int StopSlaughterDay, bool IncludeKiller, double StakeShare, string Duelists, int MinChance, int MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double GrowthK, double ModFuel, double EliteShare, string SpoilerOwner, double SpoilerShare, string DbPath, string AchievDataFile);
 
 internal class Program
 {
-    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>] [--duels-from <day>] [--chance age|witness|achievements|none] [--debuff feed-steal|depreciate|none] [--no-glory] [--stop-slaughter <day>] [--killer] [--stake <0..1>] [--duelists Kevish,Ганс] [--min-chance <5..50>] [--max-chance <50..95>] [--min-weight-ratio <0..1>] [--call-model nearest|any] [--growth sqrt|linear] [--growth-k <0..1>] [--mod-fuel <0..10>] [--elite-share <0..1>]";
+    private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>] [--duels-from <day>] [--chance age|witness|achievements|none] [--debuff feed-steal|depreciate|none] [--no-glory] [--stop-slaughter <day>] [--killer] [--stake <0..1>] [--duelists Kevish,Ганс] [--min-chance <5..50>] [--max-chance <50..95>] [--min-weight-ratio <0..1>] [--call-model nearest|any] [--growth sqrt|linear] [--growth-k <0..1>] [--mod-fuel <0..10>] [--elite-share <0..1>] [--spoiler <owner>] [--spoiler-share <0..1>]";
 
     private const string DEFAULT_ACHIEV_PATH = "../SwineBot/Achievements/achiev_data.json";
 
     /// <summary>Коэффициент суб-линейного роста по умолчанию — как в боте.</summary>
-    private const double GrowthDefaultK = 0.010;
+    private const double GrowthDefaultK = 0.030;
 
     /// <summary>Сколько запаса сжигает килограмм бонусной массы, по умолчанию — как в боте.</summary>
     private const double GrowthDefaultFuelPerBonus = 1.5;
@@ -265,6 +265,15 @@ internal class Program
             return null;
         }
 
+        var spoilerOwner = values.TryGetValue("--spoiler", out var spoilerStr) ? spoilerStr : "";
+        var spoilerShare = 0.7;
+        if (values.TryGetValue("--spoiler-share", out var spoilerShareStr)
+            && (!double.TryParse(spoilerShareStr, System.Globalization.CultureInfo.InvariantCulture, out spoilerShare) || spoilerShare is <= 0 or > 1))
+        {
+            Console.Error.WriteLine("--spoiler-share must be a number between 0 and 1");
+            return null;
+        }
+
         var callModel = "nearest";
         if (values.TryGetValue("--call-model", out var callModelStr))
         {
@@ -286,7 +295,7 @@ internal class Program
             return null;
         }
 
-        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, !flags.Contains("--no-glory"), stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, modFuel, eliteShare, dbPath, Path.GetFullPath(achievPath));
+        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, !flags.Contains("--no-glory"), stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, modFuel, eliteShare, spoilerOwner, spoilerShare, dbPath, Path.GetFullPath(achievPath));
     }
 
     private static string DefaultDbPath()

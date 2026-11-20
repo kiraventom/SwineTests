@@ -44,6 +44,7 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
     private int _declinedChance;
     private int _feeds;
     private int _slaughters;
+    private int _spoilers;
 
     private readonly List<string> _series = [];
 
@@ -102,6 +103,16 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
 
             foreach (var profile in Profiles)
             {
+                // Стратегия «сорвать разгон»: выбранный свин режет себя, как только конкурент
+                // подбирается к его весу — порог траты считается от веса лидера, поэтому
+                // лидерство переходит конкуренту вместе с налогом
+                if (await ShouldSpoil(profile, now, stoppingToken))
+                {
+                    _nextSlaughter[profile.TelegramId] = now.AddDays(Math.Max(1, profile.SlaughterEveryDays));
+                    await Act(profile, "/slaughter yes", stoppingToken);
+                    ++_spoilers;
+                }
+
                 // Забой по расписанию владельца (--no-slaughter отключает, чтобы не мешать графикам дуэлей)
                 if (!Settings.NoSlaughter
                     && (Settings.StopSlaughterDay < 0 || hour / 24 < Settings.StopSlaughterDay)
@@ -230,6 +241,28 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
             if (!await AnswerPendingIfAny(profile, token))
                 return;
         }
+    }
+
+    /// <summary>Пора ли выбранному свину резать себя, чтобы включить трату конкуренту.</summary>
+    private async Task<bool> ShouldSpoil(ProdProfile profile, DateTime now, CancellationToken token)
+    {
+        if (string.IsNullOrEmpty(Settings.SpoilerOwner) || profile.Owner != Settings.SpoilerOwner)
+            return false;
+
+        using var scope = spf.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<UserContext>();
+
+        var swine = await context.Swines.AsNoTracking().FirstAsync(s => s.OwnerId == context.Users
+            .First(u => u.TelegramId == profile.TelegramId).UserId, token);
+
+        if (swine.Weight < 5_000)
+            return false;
+
+        var rivalMax = await context.Swines.AsNoTracking()
+            .Where(s => s.GroupId == swine.GroupId && s.SwineId != swine.SwineId)
+            .MaxAsync(s => (int?)s.Weight, token) ?? 0;
+
+        return rivalMax >= swine.Weight * Settings.SpoilerShare;
     }
 
     private async Task<bool> AnswerPendingIfAny(ProdProfile profile, CancellationToken token)
