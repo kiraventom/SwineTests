@@ -390,10 +390,14 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
         var fuelAfter = await Db(c => c.GetMultiplierFuelAsync(SwineOf(c, Attacker)));
         var gained = weightAfter - weightBefore;
         var spent = fuelBefore - fuelAfter;
-        var expectedBase = Math.Max(1, gained - spent / 1.5);
-        Check("трата запаса равна бонусной массе × коэффициент",
-            spent > 0 && Math.Abs(spent / GrowthBalance.FuelPerBonusKg - (gained - expectedBase)) < 1.0,
-            $"съел {gained} кг, запас {fuelBefore:F0} -> {fuelAfter:F0} (списано {spent:F1}), множитель {modifier:F2}");
+        var bonusImplied = spent / GrowthBalance.FuelPerBonusKg;
+
+        // Проверка не круглая: списанное делится на коэффициент и должно дать бонусную часть,
+        // а базовая часть порции по определению не больше 20 кг (MAX_FEED_AMOUNT)
+        Check("трата запаса = коэффициент × бонусная масса",
+            spent > 0 && bonusImplied > 0 && bonusImplied <= gained && gained - bonusImplied <= 20,
+            $"съел {gained} кг, списано {spent:F1}, это {bonusImplied:F1} кг бонуса "
+            + $"(база {gained - bonusImplied:F1} при коэффициенте {GrowthBalance.FuelPerBonusKg})");
 
         Advance(48);
     }
