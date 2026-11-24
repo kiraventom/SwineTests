@@ -42,6 +42,7 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
         await StepSlaughterUnderRequestIsDecline(token);
         await StepInfoDoesNotCountDeclines(token);
         await StepMultiplierDecay(token);
+        await StepSlaughterNeverLowersMultiplier(token);
 
         return _failures;
     }
@@ -398,6 +399,37 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
             spent > 0 && bonusImplied > 0 && bonusImplied <= gained && gained - bonusImplied <= 20,
             $"съел {gained} кг, списано {spent:F1}, это {bonusImplied:F1} кг бонуса "
             + $"(база {gained - bonusImplied:F1} при коэффициенте {GrowthBalance.FuelPerBonusKg})");
+
+        Advance(48);
+    }
+
+    /// <summary>
+    /// Забой не должен понижать множитель: если наследнику досталось бы меньше,
+    /// чем было, запас остаётся прежним, а сообщение говорит, что эффекта нет.
+    /// </summary>
+    private async Task StepSlaughterNeverLowersMultiplier(CancellationToken token)
+    {
+        Console.WriteLine("-- забой не понижает множитель");
+
+        Advance(48);
+
+        // тощий свин с большим запасом: 0.4·запас + вес < запас
+        await SetWeights(50, 10_000);
+        var modifierBefore = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
+        var fuelBefore = await Db(c => c.GetMultiplierFuelAsync(SwineOf(c, Attacker)));
+
+        var message = await Send(Attacker, "/slaughter yes", token);
+
+        var modifierAfter = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
+        var fuelAfter = await Db(c => c.GetMultiplierFuelAsync(SwineOf(c, Attacker)));
+
+        Check("множитель не упал после забоя", modifierAfter >= modifierBefore - 1e-9,
+            $"{modifierBefore:F4} -> {modifierAfter:F4} (запас {fuelBefore:F0} -> {fuelAfter:F0})");
+        Check("запас сохранён", Math.Abs(fuelAfter - fuelBefore) < 1.0,
+            $"{fuelBefore:F0} -> {fuelAfter:F0}");
+        Check("сообщение: убийство не дало эффекта",
+            message?.Text?.Contains("не принесло никакого эффекта") == true,
+            message?.Text?.Split('\n').LastOrDefault());
 
         Advance(48);
     }

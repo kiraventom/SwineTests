@@ -26,7 +26,7 @@ internal class Program
     private const double GrowthDefaultFuelPerBonus = 2.0;
 
     /// <summary>Доля веса лидера, с которой начинается трата.</summary>
-    private const double GrowthDefaultEliteShare = 0.75;
+    private const double GrowthDefaultEliteShare = 0.5;
 
     /// <summary>Доля запаса, которую наследует свин после забоя.</summary>
     private const double GrowthDefaultHeirShare = 0.4;
@@ -321,6 +321,6 @@ internal class Program
     {
         logger.MinimumLevel.Debug()
             .MinimumLevel.Override("Microsoft.EntityFrameworkCore.Database.Command", LogEventLevel.Warning)
-            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Warning);
+            .WriteTo.Console(restrictedToMinimumLevel: LogEventLevel.Information);
     }
 }

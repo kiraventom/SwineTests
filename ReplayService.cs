@@ -516,12 +516,14 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
         var context = scope.ServiceProvider.GetRequiredService<UserContext>();
 
         var parts = new List<string>();
+        var mods = new List<string>();
         var total = 0;
 
         foreach (var profile in Profiles)
         {
             var swine = await SwineOf(context, profile.TelegramId);
             parts.Add($"{profile.Owner}:{swine.Weight}");
+            mods.Add($"\"{profile.Owner}\":{await context.GetGrowthModifierAsync(swine):F2}");
             total += swine.Weight;
 
             var fuel = await context.GetMultiplierFuelAsync(swine);
