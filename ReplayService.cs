@@ -379,11 +379,20 @@ public class ReplayService(ILogger<ReplayService> Logger, Settings Settings, IDa
         var context = scope.ServiceProvider.GetRequiredService<UserContext>();
 
         // Лимит «один вызов на беседу в сутки» — такой же, как в боте, иначе симуляция
-        // нафантазирует в разы больше дуэлей, чем возможно в реальности
+        // нафантазирует в разы больше дуэлей, чем возможно в реальности.
+        // DuelResults.GroupId — внутренний id беседы, а GroupTelegramId — телеграмный:
+        // сравнивать их напрямую нельзя, поэтому id сначала ищем в Groups
+        var groupId = await context.Groups
+            .Where(g => g.TelegramId == GroupTelegramId)
+            .Select(g => (int?)g.GroupId)
+            .FirstOrDefaultAsync(token);
+
         var callSince = now.AddHours(-DuelBalance.CallCooldownHours);
         var anyCallToday = await context.DuelResults
-            .AnyAsync(r => r.GroupId == GroupTelegramId && r.DateTime > callSince, token)
-            || await context.DuelRequests.AnyAsync(token);
+            .AnyAsync(r => r.GroupId == groupId && r.DateTime > callSince, token)
+            || await context.DuelRequests
+                .Join(context.Swines, dr => dr.DefenderId, s => s.SwineId, (dr, s) => s.GroupId)
+                .AnyAsync(g => g == groupId, token);
 
         if (anyCallToday)
             return;
