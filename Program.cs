@@ -11,25 +11,19 @@ using static System.Environment;
 
 namespace SwineTests;
 
-public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool Glory, int StopSlaughterDay, bool IncludeKiller, double StakeShare, string Duelists, int MinChance, int MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double GrowthK, double ModFuel, double EliteShare, string SpoilerOwner, double SpoilerShare, double HeirShare, string DbPath, string AchievDataFile);
+/// <summary>
+/// Настройки прогона. Поля, которые повторяют настройки бота (ChanceSource, Debuff, Glory,
+/// StakeShare, MinChance, MaxChance, GrowthModel, GrowthK, ModFuel, EliteShare, HeirShare),
+/// равны null, если флаг не задан: тогда работает значение из бота, а не копия в харнессе.
+/// Иначе харнесс однажды снова начнёт мерить не то, что поедет в прод.
+/// </summary>
+public record Settings(int DaysCount, bool Verbose, bool NoSlaughter, double DuelChance, bool Replay, double DuelConsent, int DuelsFromDay, string ChanceSource, string Debuff, bool? Glory, int StopSlaughterDay, bool IncludeKiller, double? StakeShare, string Duelists, int? MinChance, int? MaxChance, double DuelMinWeightRatio, string CallModel, string GrowthModel, double? GrowthK, double? ModFuel, double? EliteShare, string SpoilerOwner, double SpoilerShare, double? HeirShare, string DbPath, string AchievDataFile);
 
 internal class Program
 {
     private const string USAGE = "Usage: SwineTests --days <days_count> [--db <path>] [--achiev <path>] [--verbose] [--no-slaughter] [--duel-chance <0..1>] [--replay] [--consent <0..1>] [--duels-from <day>] [--chance age|witness|achievements|none] [--debuff feed-steal|depreciate|none] [--no-glory] [--stop-slaughter <day>] [--killer] [--stake <0..1>] [--duelists Kevish,Ганс] [--min-chance <5..50>] [--max-chance <50..95>] [--min-weight-ratio <0..1>] [--call-model nearest|any] [--growth sqrt|linear] [--growth-k <0..1>] [--mod-fuel <0..10>] [--elite-share <0..1>] [--spoiler <owner>] [--spoiler-share <0..1>] [--heir-share <0..1>]";
 
     private const string DEFAULT_ACHIEV_PATH = "../SwineBot/Achievements/achiev_data.json";
-
-    /// <summary>Коэффициент суб-линейного роста по умолчанию — как в боте.</summary>
-    private const double GrowthDefaultK = 0.020;
-
-    /// <summary>Сколько запаса сжигает килограмм бонусной массы, по умолчанию — как в боте.</summary>
-    private const double GrowthDefaultFuelPerBonus = 2.0;
-
-    /// <summary>Доля веса лидера, с которой начинается трата.</summary>
-    private const double GrowthDefaultEliteShare = 0.5;
-
-    /// <summary>Доля запаса, которую наследует свин после забоя.</summary>
-    private const double GrowthDefaultHeirShare = 0.4;
 
     /// <summary>
     /// Telegram validates the token format when the bot client is constructed, so the fake
@@ -49,33 +43,59 @@ internal class Program
             return 2;
         }
 
-        // Настройки боевых механик передаём в бот до старта хоста
-        SwineBot.Actions.Commands.Duel.DuelBalance.ChanceSource = settings.ChanceSource switch
+        // Настройки боевых механик передаём в бот до старта хоста.
+        // Трогаем только то, что явно задано флагом: по умолчанию харнесс работает
+        // на дефолтах бота, иначе легко снова померить не ту конфигурацию.
+        if (settings.ChanceSource is { } chanceSource)
         {
-            "age" => SwineBot.Actions.Commands.Duel.DuelChanceSource.Age,
-            "witness" => SwineBot.Actions.Commands.Duel.DuelChanceSource.WitnessedKills,
-            "achievements" => SwineBot.Actions.Commands.Duel.DuelChanceSource.Achievements,
-            _ => SwineBot.Actions.Commands.Duel.DuelChanceSource.None,
-        };
+            SwineBot.Actions.Commands.Duel.DuelBalance.ChanceSource = chanceSource switch
+            {
+                "age" => SwineBot.Actions.Commands.Duel.DuelChanceSource.Age,
+                "witness" => SwineBot.Actions.Commands.Duel.DuelChanceSource.WitnessedKills,
+                "achievements" => SwineBot.Actions.Commands.Duel.DuelChanceSource.Achievements,
+                _ => SwineBot.Actions.Commands.Duel.DuelChanceSource.None,
+            };
+        }
 
-        SwineBot.Actions.Commands.Duel.DuelBalance.Debuff = settings.Debuff switch
+        if (settings.Debuff is { } debuff)
         {
-            "feed-steal" => SwineBot.Actions.Commands.Duel.DuelDebuff.FeedSteal,
-            "depreciate" => SwineBot.Actions.Commands.Duel.DuelDebuff.Depreciate,
-            _ => SwineBot.Actions.Commands.Duel.DuelDebuff.None,
-        };
+            SwineBot.Actions.Commands.Duel.DuelBalance.Debuff = debuff switch
+            {
+                "feed-steal" => SwineBot.Actions.Commands.Duel.DuelDebuff.FeedSteal,
+                "depreciate" => SwineBot.Actions.Commands.Duel.DuelDebuff.Depreciate,
+                _ => SwineBot.Actions.Commands.Duel.DuelDebuff.None,
+            };
+        }
 
         // Модель роста от забоёв: линейная (старая) или суб-линейная (корень)
-        SwineBot.Model.GrowthBalance.SubLinear = settings.GrowthModel == "sqrt";
-        SwineBot.Model.GrowthBalance.PerSqrtKg = settings.GrowthK;
-        SwineBot.Model.GrowthBalance.FuelPerBonusKg = settings.ModFuel;
-        SwineBot.Model.GrowthBalance.HeirInheritanceShare = settings.HeirShare;
-        SwineBot.Model.GrowthBalance.EliteThresholdShare = settings.EliteShare;
+        if (settings.GrowthModel is { } growthModel)
+            SwineBot.Model.GrowthBalance.SubLinear = growthModel == "sqrt";
 
-        SwineBot.Actions.Commands.Duel.DuelBalance.GloryEnabled = settings.Glory;
-        SwineBot.Actions.Commands.Duel.DuelBalance.StakeShare = settings.StakeShare;
-        SwineBot.Actions.Commands.Duel.DuelBalance.MinWinChance = settings.MinChance;
-        SwineBot.Actions.Commands.Duel.DuelBalance.MaxWinChance = settings.MaxChance;
+        if (settings.GrowthK is { } growthK)
+            SwineBot.Model.GrowthBalance.PerSqrtKg = growthK;
+
+        if (settings.ModFuel is { } modFuel)
+            SwineBot.Model.GrowthBalance.FuelPerBonusKg = modFuel;
+
+        if (settings.HeirShare is { } heirShare)
+            SwineBot.Model.GrowthBalance.HeirInheritanceShare = heirShare;
+
+        if (settings.EliteShare is { } eliteShare)
+            SwineBot.Model.GrowthBalance.EliteThresholdShare = eliteShare;
+
+        if (settings.Glory is { } glory)
+            SwineBot.Actions.Commands.Duel.DuelBalance.GloryEnabled = glory;
+
+        if (settings.StakeShare is { } stakeShare)
+            SwineBot.Actions.Commands.Duel.DuelBalance.StakeShare = stakeShare;
+
+        if (settings.MinChance is { } minChance)
+            SwineBot.Actions.Commands.Duel.DuelBalance.MinWinChance = minChance;
+
+        if (settings.MaxChance is { } maxChance)
+            SwineBot.Actions.Commands.Duel.DuelBalance.MaxWinChance = maxChance;
+
+        PrintEffectiveBalance();
 
         Log.Logger = new LoggerConfiguration()
             .MinimumLevel.Debug()
@@ -136,6 +156,26 @@ internal class Program
         return ExitCode;
     }
 
+    /// <summary>
+    /// Печатает действующие значения баланса. Без этого лог нельзя привязать к конфигурации,
+    /// и ошибку «харнесс переопределил коэффициент своим» снова никто не заметит.
+    /// </summary>
+    private static void PrintEffectiveBalance()
+    {
+        // DuelBalance и GrowthBalance — статические классы, поэтому к ним обращаемся по имени типа
+        Console.WriteLine("=== Баланс (действующие значения)");
+        Console.WriteLine($"duels: chance={SwineBot.Actions.Commands.Duel.DuelBalance.ChanceSource}, "
+                          + $"debuff={SwineBot.Actions.Commands.Duel.DuelBalance.Debuff}, "
+                          + $"glory={SwineBot.Actions.Commands.Duel.DuelBalance.GloryEnabled}, "
+                          + $"stake={SwineBot.Actions.Commands.Duel.DuelBalance.StakeShare:F3}, "
+                          + $"min/max-chance={SwineBot.Actions.Commands.Duel.DuelBalance.MinWinChance}/{SwineBot.Actions.Commands.Duel.DuelBalance.MaxWinChance}");
+        Console.WriteLine($"growth: model={(SwineBot.Model.GrowthBalance.SubLinear ? "sqrt" : "linear")}, "
+                          + $"k={SwineBot.Model.GrowthBalance.PerSqrtKg:F4}, "
+                          + $"fuel-per-bonus-kg={SwineBot.Model.GrowthBalance.FuelPerBonusKg:F2}, "
+                          + $"elite-share={SwineBot.Model.GrowthBalance.EliteThresholdShare:F2}, "
+                          + $"heir-share={SwineBot.Model.GrowthBalance.HeirInheritanceShare:F2}");
+    }
+
     private static Settings ParseSettings(string[] args)
     {
         var values = new Dictionary<string, string>();
@@ -186,18 +226,28 @@ internal class Program
             return null;
         }
 
-        var chanceSource = values.TryGetValue("--chance", out var chanceStr) ? chanceStr : "none";
-        if (!new[] { "age", "witness", "achievements", "none" }.Contains(chanceSource))
+        string chanceSource = null;
+        if (values.TryGetValue("--chance", out var chanceStr))
         {
-            Console.Error.WriteLine("--chance must be age, witness, achievements or none");
-            return null;
+            if (!new[] { "age", "witness", "achievements", "none" }.Contains(chanceStr))
+            {
+                Console.Error.WriteLine("--chance must be age, witness, achievements or none");
+                return null;
+            }
+
+            chanceSource = chanceStr;
         }
 
-        var debuff = values.TryGetValue("--debuff", out var debuffStr) ? debuffStr : "none";
-        if (!new[] { "feed-steal", "depreciate", "none" }.Contains(debuff))
+        string debuff = null;
+        if (values.TryGetValue("--debuff", out var debuffStr))
         {
-            Console.Error.WriteLine("--debuff must be feed-steal, depreciate or none");
-            return null;
+            if (!new[] { "feed-steal", "depreciate", "none" }.Contains(debuffStr))
+            {
+                Console.Error.WriteLine("--debuff must be feed-steal, depreciate or none");
+                return null;
+            }
+
+            debuff = debuffStr;
         }
 
         var stopSlaughterDay = -1;
@@ -208,26 +258,41 @@ internal class Program
             return null;
         }
 
-        var stakeShare = 0.05;
-        if (values.TryGetValue("--stake", out var stakeStr)
-            && (!double.TryParse(stakeStr, System.Globalization.CultureInfo.InvariantCulture, out stakeShare) || stakeShare is <= 0 or > 1))
+        double? stakeShare = null;
+        if (values.TryGetValue("--stake", out var stakeStr))
         {
-            Console.Error.WriteLine("--stake must be a number between 0 and 1");
-            return null;
+            if (!double.TryParse(stakeStr, System.Globalization.CultureInfo.InvariantCulture, out var stake)
+                || stake is <= 0 or > 1)
+            {
+                Console.Error.WriteLine("--stake must be a number between 0 and 1");
+                return null;
+            }
+
+            stakeShare = stake;
         }
 
-        var minChance = 5;
-        var maxChance = 95;
-        if (values.TryGetValue("--min-chance", out var minStr) && !int.TryParse(minStr, out minChance))
+        int? minChance = null;
+        if (values.TryGetValue("--min-chance", out var minStr))
         {
-            Console.Error.WriteLine("--min-chance must be an integer");
-            return null;
+            if (!int.TryParse(minStr, out var minParsed))
+            {
+                Console.Error.WriteLine("--min-chance must be an integer");
+                return null;
+            }
+
+            minChance = minParsed;
         }
 
-        if (values.TryGetValue("--max-chance", out var maxStr) && !int.TryParse(maxStr, out maxChance))
+        int? maxChance = null;
+        if (values.TryGetValue("--max-chance", out var maxStr))
         {
-            Console.Error.WriteLine("--max-chance must be an integer");
-            return null;
+            if (!int.TryParse(maxStr, out var maxParsed))
+            {
+                Console.Error.WriteLine("--max-chance must be an integer");
+                return null;
+            }
+
+            maxChance = maxParsed;
         }
 
         var minWeightRatio = 0.0;
@@ -238,35 +303,55 @@ internal class Program
             return null;
         }
 
-        var growthModel = values.TryGetValue("--growth", out var growthStr) ? growthStr : "sqrt";
-        if (!new[] { "sqrt", "linear" }.Contains(growthModel))
+        string growthModel = null;
+        if (values.TryGetValue("--growth", out var growthStr))
         {
-            Console.Error.WriteLine("--growth must be sqrt or linear");
-            return null;
+            if (!new[] { "sqrt", "linear" }.Contains(growthStr))
+            {
+                Console.Error.WriteLine("--growth must be sqrt or linear");
+                return null;
+            }
+
+            growthModel = growthStr;
         }
 
-        var growthK = GrowthDefaultK;
-        if (values.TryGetValue("--growth-k", out var growthKStr)
-            && (!double.TryParse(growthKStr, System.Globalization.CultureInfo.InvariantCulture, out growthK) || growthK is <= 0 or > 1))
+        double? growthK = null;
+        if (values.TryGetValue("--growth-k", out var growthKStr))
         {
-            Console.Error.WriteLine("--growth-k must be a number between 0 and 1");
-            return null;
+            if (!double.TryParse(growthKStr, System.Globalization.CultureInfo.InvariantCulture, out var k)
+                || k is <= 0 or > 1)
+            {
+                Console.Error.WriteLine("--growth-k must be a number between 0 and 1");
+                return null;
+            }
+
+            growthK = k;
         }
 
-        var modFuel = GrowthDefaultFuelPerBonus;
-        if (values.TryGetValue("--mod-fuel", out var fuelStr)
-            && (!double.TryParse(fuelStr, System.Globalization.CultureInfo.InvariantCulture, out modFuel) || modFuel is < 0 or > 10))
+        double? modFuel = null;
+        if (values.TryGetValue("--mod-fuel", out var fuelStr))
         {
-            Console.Error.WriteLine("--mod-fuel must be a number between 0 and 10");
-            return null;
+            if (!double.TryParse(fuelStr, System.Globalization.CultureInfo.InvariantCulture, out var fuel)
+                || fuel is < 0 or > 10)
+            {
+                Console.Error.WriteLine("--mod-fuel must be a number between 0 and 10");
+                return null;
+            }
+
+            modFuel = fuel;
         }
 
-        var eliteShare = GrowthDefaultEliteShare;
-        if (values.TryGetValue("--elite-share", out var shareStr)
-            && (!double.TryParse(shareStr, System.Globalization.CultureInfo.InvariantCulture, out eliteShare) || eliteShare is <= 0 or > 1))
+        double? eliteShare = null;
+        if (values.TryGetValue("--elite-share", out var shareStr))
         {
-            Console.Error.WriteLine("--elite-share must be a number between 0 and 1");
-            return null;
+            if (!double.TryParse(shareStr, System.Globalization.CultureInfo.InvariantCulture, out var share)
+                || share is <= 0 or > 1)
+            {
+                Console.Error.WriteLine("--elite-share must be a number between 0 and 1");
+                return null;
+            }
+
+            eliteShare = share;
         }
 
         var spoilerOwner = values.TryGetValue("--spoiler", out var spoilerStr) ? spoilerStr : "";
@@ -278,12 +363,17 @@ internal class Program
             return null;
         }
 
-        var heirShare = GrowthDefaultHeirShare;
-        if (values.TryGetValue("--heir-share", out var heirStr)
-            && (!double.TryParse(heirStr, System.Globalization.CultureInfo.InvariantCulture, out heirShare) || heirShare is < 0 or > 1))
+        double? heirShare = null;
+        if (values.TryGetValue("--heir-share", out var heirStr))
         {
-            Console.Error.WriteLine("--heir-share must be a number between 0 and 1");
-            return null;
+            if (!double.TryParse(heirStr, System.Globalization.CultureInfo.InvariantCulture, out var heir)
+                || heir is < 0 or > 1)
+            {
+                Console.Error.WriteLine("--heir-share must be a number between 0 and 1");
+                return null;
+            }
+
+            heirShare = heir;
         }
 
         var callModel = "nearest";
@@ -307,7 +397,10 @@ internal class Program
             return null;
         }
 
-        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, !flags.Contains("--no-glory"), stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, modFuel, eliteShare, spoilerOwner, spoilerShare, heirShare, dbPath, Path.GetFullPath(achievPath));
+        // --no-glory только выключает славу; без флага значение берётся из бота
+        bool? glory = flags.Contains("--no-glory") ? false : null;
+
+        return new Settings(days, flags.Contains("--verbose"), flags.Contains("--no-slaughter"), duelChance, flags.Contains("--replay"), consent, duelsFromDay, chanceSource, debuff, glory, stopSlaughterDay, flags.Contains("--killer"), stakeShare, values.TryGetValue("--duelists", out var duelistsStr) ? duelistsStr : "", minChance, maxChance, minWeightRatio, callModel, growthModel, growthK, modFuel, eliteShare, spoilerOwner, spoilerShare, heirShare, dbPath, Path.GetFullPath(achievPath));
     }
 
     private static string DefaultDbPath()
