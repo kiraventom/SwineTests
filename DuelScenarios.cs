@@ -364,7 +364,7 @@ public class DuelScenarios(IServiceScopeFactory spf, MockBotMessageSender sender
         var modifierBefore = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
         Check("у свина есть запас от забоёв", modifierBefore > 1.0, modifierBefore.ToString("F4"));
 
-        // 8 000 кг при лидере 10 000 — это выше 75% порога: кормёжка тратит запас
+        // 8 000 кг при лидере 10 000 — это выше порога (половина веса лидера): кормёжка тратит запас
         await Send(Attacker, "/feed", token);
         var modifierAfterTop = await Db(c => c.GetGrowthModifierAsync(SwineOf(c, Attacker)));
         Check("выше порога множитель тратится", modifierBefore - modifierAfterTop > 1e-4,
