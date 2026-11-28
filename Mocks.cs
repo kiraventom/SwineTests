@@ -1,6 +1,7 @@
 using SwineBot;
 using SwineBot.Senders;
 using Telegram.Bot;
+using Telegram.Bot.Types;
 using Telegram.Bot.Types.ReplyMarkups;
 
 namespace SwineTests;
@@ -51,6 +52,27 @@ public class MockMessageEditor : IMessageEditor
     {
         var buttons = message.Keyboard?.InlineKeyboard?.Sum(r => r.Count()) ?? 0;
         Edited.Add(new EditedMessage(chatId, messageId, message.Text, buttons));
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>
+/// Подменяет отправку меню команд в Telegram: сценарий проверяет, что именно ушло бы,
+/// и что недоступность api.telegram.org не роняет старт бота.
+/// </summary>
+public class MockCommandMenuSender : ICommandMenuSender
+{
+    public List<IReadOnlyList<BotCommand>> Sent { get; } = [];
+
+    /// <summary>Если задано, отправка падает этой ошибкой — так проверяется обработка сбоя</summary>
+    public Exception Fail { get; set; }
+
+    public Task SetCommands(IReadOnlyList<BotCommand> commands, CancellationToken token)
+    {
+        if (Fail is not null)
+            throw Fail;
+
+        Sent.Add(commands);
         return Task.CompletedTask;
     }
 }
