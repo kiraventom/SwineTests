@@ -19,6 +19,16 @@ public class MockCallbackQueryAnswerer : ICallbackQueryAnswerer
     }
 }
 
+/// <summary>
+/// TickCount для секрета /pet. По умолчанию всегда «мимо» (1): настоящий TickCount
+/// в прогоне давал бы случайные +100 кг и засорял бы балансные медианы. Сценарии
+/// выставляют 0, чтобы попасть в тик, и возвращают 1 обратно.
+/// </summary>
+public class MockTickProvider : ITickProvider
+{
+    public long TickCount { get; set; } = 1;
+}
+
 public record EditedMessage(long ChatId, int MessageId, string Text, int Buttons);
 
 /// <summary>

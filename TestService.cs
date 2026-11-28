@@ -20,7 +20,7 @@ public class TryProgress
 
 public class TestService(ILogger<TestService> Logger, Settings Settings, MockBotMessageSender Sender,
     MockCallbackQueryAnswerer Answerer, MockMessageEditor Editor, IDateTimeNowProvider DtnProvider,
-    IServiceScopeFactory spf, IHostApplicationLifetime lifetime) : BackgroundService
+    MockTickProvider TickProvider, IServiceScopeFactory spf, IHostApplicationLifetime lifetime) : BackgroundService
 {
     private const long GROUP_TG_ID = TestUser.GroupTelegramId;
 
@@ -58,6 +58,10 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
 
         foreach (var strategy in Enum.GetValues<TestUserStrategy>())
             tryProgress.Users.Add(new TestUser(strategy));
+
+        // /pet идёт первым: ему нужны чистые вес и ачивки, а дуэльные сценарии их двигают
+        var petScenarios = new PetScenarios(spf, Sender, TickProvider, tryProgress.Users);
+        _failures.AddRange(await petScenarios.Run(stoppingToken));
 
         var scenarios = new DuelScenarios(spf, Sender, Answerer, Editor, DtnProvider, tryProgress.Users);
         _failures.AddRange(await scenarios.Run(stoppingToken));
