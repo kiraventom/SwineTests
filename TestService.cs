@@ -20,7 +20,7 @@ public class TryProgress
 
 public class TestService(ILogger<TestService> Logger, Settings Settings, MockBotMessageSender Sender,
     MockCallbackQueryAnswerer Answerer, MockMessageEditor Editor, IDateTimeNowProvider DtnProvider,
-    IServiceScopeFactory spf, IHostApplicationLifetime lifetime) : BackgroundService
+    MockCommandMenuSender CommandMenuSender, IServiceScopeFactory spf, IHostApplicationLifetime lifetime) : BackgroundService
 {
     private const long GROUP_TG_ID = TestUser.GroupTelegramId;
 
@@ -58,6 +58,10 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
 
         foreach (var strategy in Enum.GetValues<TestUserStrategy>())
             tryProgress.Users.Add(new TestUser(strategy));
+
+        // Меню команд базе не нужно: шаг идёт первым и ничего не портит дуэльным сценариям
+        var commandMenuScenarios = new CommandMenuScenarios(spf, CommandMenuSender);
+        _failures.AddRange(await commandMenuScenarios.Run(stoppingToken));
 
         var scenarios = new DuelScenarios(spf, Sender, Answerer, Editor, DtnProvider, tryProgress.Users);
         _failures.AddRange(await scenarios.Run(stoppingToken));
