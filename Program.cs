@@ -120,6 +120,7 @@ internal class Program
                 .AddSingleton<MockCallbackQueryAnswerer>()
                 .AddSingleton<MockMessageEditor>()
                 .AddSingleton<MockCommandMenuSender>()
+                .AddSingleton<MockBotSettingsSender>()
                 .AddSingleton<IBotMessageSender>(sp => sp.GetRequiredService<MockBotMessageSender>());
 
             SwineBot.Program.RegisterServices(builder.Services)
@@ -130,6 +131,8 @@ internal class Program
                 .RemoveAll<IMessageEditor>().AddSingleton<IMessageEditor>(sp => sp.GetRequiredService<MockMessageEditor>())
                 // Меню команд в прогонах никуда не уходит: иначе сценарии светились бы в Telegram
                 .RemoveAll<ICommandMenuSender>().AddSingleton<ICommandMenuSender>(sp => sp.GetRequiredService<MockCommandMenuSender>())
+                // Inline-режим тоже с моком: прогоны не должны трогать настройки живого бота
+                .RemoveAll<IBotSettingsSender>().AddSingleton<IBotSettingsSender>(sp => sp.GetRequiredService<MockBotSettingsSender>())
                 .AddSingleton<IHostedService>(provider => settings.Replay
                     ? ActivatorUtilities.CreateInstance<ReplayService>(provider)
                     : ActivatorUtilities.CreateInstance<TestService>(provider));

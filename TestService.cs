@@ -59,9 +59,12 @@ public class TestService(ILogger<TestService> Logger, Settings Settings, MockBot
         foreach (var strategy in Enum.GetValues<TestUserStrategy>())
             tryProgress.Users.Add(new TestUser(strategy));
 
-        // Меню команд базе не нужно: шаг идёт первым и ничего не портит дуэльным сценариям
+        // Меню команд и настройки бота базе не нужны: шаги идут первыми и ничего не портят дуэльным сценариям
         var commandMenuScenarios = new CommandMenuScenarios(spf, CommandMenuSender);
         _failures.AddRange(await commandMenuScenarios.Run(stoppingToken));
+
+        var botSettingsScenarios = new BotSettingsScenarios(spf);
+        _failures.AddRange(await botSettingsScenarios.Run(stoppingToken));
 
         var scenarios = new DuelScenarios(spf, Sender, Answerer, Editor, DtnProvider, tryProgress.Users);
         _failures.AddRange(await scenarios.Run(stoppingToken));

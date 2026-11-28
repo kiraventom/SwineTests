@@ -76,3 +76,24 @@ public class MockCommandMenuSender : ICommandMenuSender
         return Task.CompletedTask;
     }
 }
+
+/// <summary>
+/// Подменяет включение inline-режима: сценарий проверяет, что бот просит его при старте,
+/// и что недоступный Telegram не мешает запуску.
+/// </summary>
+public class MockBotSettingsSender : IBotSettingsSender
+{
+    public List<string> EnabledInlinePlaceholders { get; } = [];
+
+    /// <summary>Если задано, запрос падает этой ошибкой — так проверяется обработка сбоя</summary>
+    public Exception Fail { get; set; }
+
+    public Task SetInlineMode(string placeholder, CancellationToken token)
+    {
+        if (Fail is not null)
+            throw Fail;
+
+        EnabledInlinePlaceholders.Add(placeholder);
+        return Task.CompletedTask;
+    }
+}
