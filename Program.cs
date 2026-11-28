@@ -119,11 +119,13 @@ internal class Program
                 .AddSingleton<MockBotMessageSender>()
                 .AddSingleton<MockCallbackQueryAnswerer>()
                 .AddSingleton<MockMessageEditor>()
+                .AddSingleton<MockTickProvider>()
                 .AddSingleton<IBotMessageSender>(sp => sp.GetRequiredService<MockBotMessageSender>());
 
             SwineBot.Program.RegisterServices(builder.Services)
                 .RemoveAll<Config>().AddSingleton<Config>(config)
                 .RemoveAll<IDateTimeNowProvider>().AddSingleton<IDateTimeNowProvider, MockDateTimeNowProvider>()
+                .RemoveAll<ITickProvider>().AddSingleton<ITickProvider>(sp => sp.GetRequiredService<MockTickProvider>())
                 .RemoveAll<IBotMessageSender>().AddSingleton<IBotMessageSender>(sp => sp.GetRequiredService<MockBotMessageSender>())
                 .RemoveAll<ICallbackQueryAnswerer>().AddSingleton<ICallbackQueryAnswerer>(sp => sp.GetRequiredService<MockCallbackQueryAnswerer>())
                 .RemoveAll<IMessageEditor>().AddSingleton<IMessageEditor>(sp => sp.GetRequiredService<MockMessageEditor>())
